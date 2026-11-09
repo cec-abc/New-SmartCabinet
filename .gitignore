@@ -1,0 +1,19 @@
+# Python 虚拟环境
+.venv/
+venv/
+
+# IDE / 工具数据
+.idea/
+.vscode/
+.codebuddy/
+
+# Python 缓存与测试产物
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.coverage
+htmlcov/
+
+# 运行日志与输出
+*.log
+output/
