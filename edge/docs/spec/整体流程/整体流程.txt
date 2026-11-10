@@ -1,0 +1,310 @@
+||||||||||||||||||||||||||||||||||||||||阶段0-3|||||||||||||||||||||||||||||||||||||||||||
+
+sequenceDiagram
+    autonumber
+    participant Main
+    participant Edge as EdgeControl
+    participant UC as UsbController
+    participant REC as RecognitionController
+    participant YOLO as YoloEngine
+    participant TCP as TcpControlLayer
+    participant TRC as TcpReconnectThread
+    participant HB as HeartThread
+    participant DT as DecodeThread
+    participant SOCK as Socket
+
+    Note over Main,SOCK: 阶段0 启动：配置→日志→自检→注入并初始化各模块→TCP
+
+    Main->>Edge: startSystem()
+    Edge->>Edge: 配置加载: getInstance 解析 INI 推断类型
+    alt 配置失败
+        Edge->>Edge: 调 LogManager.error() 记录
+        Note over Edge: Fail-Fast 阻断启动
+    else 配置成功
+        Edge->>Edge: 读 event_cache.enabled 开关并固化到内存
+        Edge->>Edge: 调 LogManager.info() 记录
+    end
+
+    Edge->>Edge: LogManager.init(config)
+    Note over Edge: 建唯一 BlockingQueue 并启 LogExecutor
+
+    Edge->>Edge: SelfChecker.check_all() 网络 IO USB摄像头 模型
+    alt 部分失败
+        Edge->>Edge: 能力降级 IO禁开锁 摄像头offline 模型拒识别
+    else 全部通过
+        Edge->>Edge: 调 LogManager.info() 记录
+    end
+
+    Edge->>UC: init(config, logger, sink=this) 构造并注入Sink
+    UC->>UC: 读取配置并校验路径
+    alt 配置或硬件失败
+        UC->>UC: 调 LogManager.error() 记录
+        UC-->>Edge: 返回失败，标记采集不可用 (不阻断启动)
+    else 成功
+        UC->>UC: 实例化 4 个 CaptureWorker
+        UC->>UC: 调 LogManager.info() 记录
+    end
+
+    Edge->>REC: init(config, logger, sink=this) 构造并注入Sink
+    REC->>REC: 读取配置并校验模型路径
+    alt 配置缺失或非法
+        REC->>REC: 调 LogManager.error() 记录
+        REC-->>Edge: 返回失败，标记识别不可用
+    else 配置正常
+        REC->>YOLO: load_model(模型路径)
+        alt 模型加载失败或超时
+            YOLO-->>REC: 抛异常
+            REC->>REC: 调 LogManager.error() 记录
+            REC-->>Edge: 返回失败，标记识别不可用
+        else 加载成功
+            YOLO-->>REC: 模型就绪(仅加载一次)
+            REC->>REC: 调 LogManager.info() 记录
+        end
+    end
+
+    Edge->>TCP: init(config, logger, sink=this)
+    Edge->>TCP: start()
+    TCP->>TRC: 实例化并 start() 重连线程
+    Note over TCP,DT: HeartThread 与 DecodeThread 此时不启动
+
+    Note over Main,SOCK: 阶段1 TCP 连接与首连成功
+
+    loop 重连退避 [1,2,4,8,16,30s]
+        TRC->>TRC: tryConnect()
+        TRC->>TCP: connect()
+        TCP->>SOCK: socket.connect()
+        alt 连接失败
+            SOCK-->>TCP: ConnectionRefused / Timeout
+            TCP-->>TRC: 抛异常
+            TRC->>TRC: 调 LogManager.error() 记录
+            TRC-->>Edge: 通过SignalSink回调异常
+            TRC->>TRC: retryIdx 加 1, waitBackoff()
+        else 连接成功
+            SOCK-->>TCP: 建立 TCP 连接
+            TCP-->>TRC: 返回 True
+            TRC->>TRC: resetBackoff() 并调 LogManager.info()
+            TRC->>TCP: onConnected()
+            TCP->>TCP: linkState 置 UP
+            TRC->>TRC: isThreadRunning 置 False
+            Note over TRC: 一次性线程使命完成，run() 退出
+        end
+    end
+
+    Note over TCP,DT: UP 后 心跳与Decode 并行启动(无依赖) 再 onLinkUp
+
+    par 启心跳
+        TCP->>HB: startHeart() 清事件并建线程
+        HB->>HB: 读取配置 heart_interval 进入循环
+    and 启Decode
+        TCP->>DT: startDecode() 建线程
+        DT->>DT: 读取配置 max_frame_size 进入 recv 循环
+    end
+
+    TCP->>Edge: 通过SignalSink回调 onLinkUp()
+    alt event_cache.enabled == true
+        Edge->>Edge: 按序补发 EventCache 缓存事件
+    else event_cache.enabled == false
+        Edge->>Edge: 丢弃断线期间事件并记 info
+    end
+
+    Note over Main,SOCK: 阶段2 周期心跳
+
+    loop 每 3 秒
+        HB->>HB: waitNextTick() 用 Event.wait
+        HB->>HB: buildFrameData() 组帧
+        alt 组帧异常
+            HB->>HB: 调 LogManager.error() 记录
+            HB-->>TCP: 逐级上抛异常
+            TCP-->>Edge: 通过SignalSink上报
+        else 组帧成功
+            HB->>TCP: sendHeartFrame(frame)
+            TCP->>TCP: 加锁并判 linkState
+            alt 非 UP
+                TCP-->>HB: 返回 false
+            else UP
+                TCP->>SOCK: socket.send()
+                alt 发送失败
+                    SOCK-->>TCP: IO 异常
+                    TCP-->>HB: 捕获并返回 false
+                    HB->>HB: 调 LogManager.error() 记录
+                    HB->>TCP: onHeartSendFailed(reason)
+                    alt linkState 已非 UP
+                        TCP->>TCP: 忽略 防重复宣告
+                    else 仍为 UP
+                        TCP->>TCP: linkState 置 DOWN
+                        TCP->>Edge: 通过SignalSink回调 onLinkDown(HEART)
+                        Edge->>TCP: stopHeart()
+                        TCP->>HB: stopHeart()
+                        Edge->>TCP: stopDecode()
+                        Edge->>TCP: 启动断线重连流程
+                        TCP->>TRC: 重新实例化并 start() 重连线程
+                    end
+                end
+            end
+        end
+    end
+
+    Note over Main,SOCK: 阶段3 DecodeThread 收指令并解析
+
+    loop 运行中
+        DT->>SOCK: socket.recv()
+        alt 返回 n 大于 0
+            SOCK-->>DT: byte_data
+            DT->>DT: 追加 recvBuffer 并 _split_frames()
+            opt 切出完整帧
+                DT->>DT: _decode_and_parse(frame)
+                alt 解析成功
+                    DT->>DT: 调 LogManager.info() 记录
+                    DT->>DT: 组装 Signal
+                    DT->>TCP: onSignalDecoded(signal)
+                    TCP->>Edge: 通过SignalSink回调 onSignalDecoded
+                    Edge->>Edge: route_signal() 按 type 分发
+                else 业务异常
+                    DT->>DT: 调 LogManager.error() 记录
+                    DT->>TCP: onFrameError(exception)
+                    TCP->>Edge: 通过SignalSink回调 onFrameError
+                end
+            end
+        else 返回 0 或抛异常
+            SOCK-->>DT: 断线
+            DT->>DT: 调 LogManager.error() 记录
+            DT->>TCP: onLinkDown(reason, source=RECV)
+            TCP->>Edge: 通过SignalSink回调 onLinkDown(RECV)
+            Edge->>TCP: stopHeart() & stopDecode()
+            Edge->>TCP: 启动断线重连流程
+            TCP->>TRC: 重新实例化并 start() 重连线程
+        end
+    end
+
+||||||||||||||||||||||||||||||||||||||||阶段4-5||||||||||||||||||||||||||||||||||||||||||
+
+
+sequenceDiagram
+    autonumber
+    participant Edge as EdgeControl
+    participant UC as UsbController
+    participant CW as CaptureWorker (1~4)
+    participant REC as RecognitionController
+    participant RW as RecognitionWorker (1~4)
+
+    Note over Edge,RW: 阶段4 收到识别指令后 USB 同时拉起4个线程并发采集 (谁先完成谁上报)
+
+    Edge->>Edge: route_signal 分发 recognize_req(带 request_id)
+    Edge->>UC: startCapture(request_id) 直接下发指令
+    UC->>UC: 前置校验 (已初始化且未在采集中)
+    alt 校验失败
+        UC-->>Edge: 通过ICaptureSink回调失败
+    else 校验通过
+        UC->>CW: 同时 start() 拉起全部 4 个线程(非阻塞)
+        UC-->>Edge: 立即返回
+        
+        par 并发执行 (各线程独立，不等待)
+            Note over CW: 线程 1 开始执行
+            CW->>CW: 采图 -> 落盘成功 -> 滚动清理
+            CW->>UC: on_worker_success(1, path, req_id)
+            UC->>Edge: 通过ICaptureSink回调 on_capture_success(1)
+            Edge->>REC: trigger(1, req_id) 立刻触发对应识别
+        and
+            Note over CW: 线程 2 开始执行
+            CW->>CW: 采图 -> 落盘失败
+            CW->>UC: on_worker_error(2, exception)
+            UC->>Edge: 通过ICaptureSink回调 on_capture_error(2)
+            Note over Edge: 记录异常，可直接向客户端回失败帧(或跳过)
+        and
+            Note over CW: 线程 3、4 ... 同理
+        end
+    end
+
+    Note over Edge,RW: 阶段5 识别模块接收触发 (控制直调，回调走接口)
+
+    REC->>REC: 前置校验 (模型就绪且对应 worker 空闲)
+    alt 校验失败
+        REC-->>Edge: 返回失败
+    else 校验通过
+        REC->>RW: start() 拉起该 workerId 线程
+        REC-->>Edge: 立即返回
+        
+        RW->>RW: 读该 workerId 的两张图 -> 拼接 -> 画ROI
+        RW->>RW: yoloEngine.infer(image)
+        
+        alt 推理耗时 > 3s (超时)
+            RW->>REC: on_worker_error(TimeoutException)
+            REC->>Edge: 通过IRecognitionSink回调 error
+            Note over Edge: 立刻发送失败应答
+        else 推理异常
+            RW->>REC: on_worker_error(InferenceException)
+            REC->>Edge: 通过IRecognitionSink回调 error
+        else 推理成功且组帧正常
+            RW->>RW: 空间归集 -> 查表校验 -> 组装 ack
+            RW->>REC: on_worker_result(ack, request_id)
+            REC->>Edge: 通过IRecognitionSink回调 result
+            Note over Edge: 发送正常应答
+        end
+    end
+
+
+
+||||||||||||||||||||||||||||||||||||||||阶段5-7|||||||||||||||||||||||||||||||||||||||||||
+
+sequenceDiagram
+    autonumber
+    participant Edge as EdgeControl
+    participant TCP as TcpControlLayer
+    participant TRC as TcpReconnectThread
+    participant HB as HeartThread
+    participant DT as DecodeThread
+    participant SOCK as Socket
+    participant UC as UsbController
+    participant REC as RecognitionController
+
+    Note over Edge,REC: 阶段5b Edge 将 ack 或失败应答经 TCP 发回上位机
+    Edge->>TCP: send_frame(应答帧)
+    TCP->>SOCK: socket.send(byte_stream)
+    alt 发送失败
+        SOCK-->>TCP: IO 异常
+        TCP-->>Edge: 返回失败
+        Edge->>Edge: 调 LogManager.error() 记录
+    end
+
+    Note over Edge,REC: 阶段6 运行中突发断线 与 自动重连恢复
+
+    SOCK-->>DT: socket.recv 返回 0 或异常 (网络断开)
+    DT->>DT: 调 LogManager.error() 记录
+    DT->>TCP: onLinkDown(reason, source=RECV)
+    TCP->>Edge: 通过SignalSink回调 onLinkDown
+    Edge->>TCP: stopHeart()
+    Edge->>TCP: stopDecode()
+    
+    Edge->>TCP: 启动重连流程
+    TCP->>TRC: 重新实例化并 start() 重连线程
+    
+    loop 重连退避
+        TRC->>TCP: connect()
+        TCP->>SOCK: socket.connect()
+        alt 连接成功
+            SOCK-->>TCP: 建立连接
+            TCP->>TCP: linkState 置 UP
+            TRC->>TRC: 线程退出
+            TCP->>HB: startHeart()
+            TCP->>DT: startDecode()
+            TCP->>Edge: 通过SignalSink回调 onLinkUp()
+            Edge->>Edge: 按需补发 EventCache 缓存
+        end
+    end
+
+    Note over Edge,REC: 阶段7 一键停机 (严格串行：业务 → 通信 → 日志)
+
+    Edge->>Edge: stopSystem() 统一入口
+    Edge->>UC: stopCapture() 直调
+    Note over UC: 置停标志, join超时3s，超时强制继续
+    Edge->>REC: stopRecognition() 直调
+    Note over REC: 置停标志, join超时3s，超时强制继续
+    
+    Edge->>TCP: stop()
+    TCP->>HB: stopHeart()
+    TCP->>DT: stopDecode()
+    TCP->>TRC: 唤醒/终止重连线程
+    Note over TCP: 关 socket, join超时3s，超时强制继续
+    
+    Edge->>Edge: LogManager.stop() 清空队列, 关Writer
+    Note over Edge: 全部 stop 完成, 进程退出

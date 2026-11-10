@@ -1,0 +1,178 @@
+第一部分：完整重构方案
+1. 已定稿决策一览
+事项	结论
+目标环境	Windows 先跑通；Linux（麒麟/RK3588）接口留好，骨架 NotImplementedError + TODO，上板再补
+Python	3.9+，类型标注用 list[str] / dict[str, tuple[dict, float]] / X | None
+命名	类 PascalCase，方法/变量 camelCase，常量 UPPER_SNAKE_CASE；文件名 snake_case 且全局唯一；方法名除接口契约（init/start/stop）外全局不重复
+注释	文件顶部保留一段 """模块说明"""；其余全部 Doxygen ## @brief / @param / @return
+异常	一个 EdgeError 类 + ErrorCode 枚举（CONFIG/LINK_DOWN/FRAME_PARSE/INFERENCE_TIMEOUT/CAPTURE）；日志打印用 code.name
+单例	删除 BaseSingleton；IniConfigManager / LogManager / YoloEngine 各自类内写 instance()（类变量 + 双检锁）
+日志	对外四个方法 rx / tx / info / error(msg, exception=None)；error 可选附堆栈
+进程锁	做。main.py 第一件事拿锁，拿不到直接退出；Windows msvcrt.locking，Linux fcntl.flock 骨架
+NPU 并发	先不做，trigger() 留 # TODO: NPU 并发限流，实测后加信号量
+补发去重	event_cache.enabled 开关做；协议帧预留 seq 只填不用；去重逻辑先不做
+部署	源码 + venv，不打包
+摄像头寻址	固定路径设计：Linux 配置写 /dev/cam_left 这种；Windows 侧写索引
+.so	先不管；接口按“纯函数下沉”设计，控制层永远留 Python
+引导文件	app_init.py（不用 bootstrap.py / app_context.py）
+2. 目录结构（方案 A 定稿）
+text
+edge/
+  main.py
+  app_init.py
+  exceptions.py
+
+  interfaces/
+    __init__.py
+    i_config.py
+    i_logger.py
+    i_thread.py
+    i_socket.py
+    i_camera.py
+    i_recognition_engine.py
+    i_platform.py
+    i_sinks.py
+
+  base/
+    __init__.py
+    base_thread.py
+    base_service.py
+
+  platform/
+    __init__.py
+    adapter.py
+    file_lock.py
+
+  infra/
+    __init__.py
+    config_manager.py
+    log_manager.py
+
+  modules/
+    tcp/
+      __init__.py
+      tcp_control_layer.py
+      tcp_reconnect_thread.py
+      tcp_decode_thread.py
+      tcp_heart_thread.py
+      tcp_socket.py
+    usb/
+      __init__.py
+      usb_controller.py
+      usb_capture_worker.py
+      usb_camera_device.py
+    recognition/
+      __init__.py
+      recognition_controller.py
+      recognition_worker.py
+      recognition_yolo_engine.py
+      recognition_utils.py
+
+  control/
+    __init__.py
+    edge_control.py
+    event_cache.py
+
+  tests/
+    unit/
+    contract/
+    integration/
+    fakes/
+文件名全局唯一：usb_controller.py 与 recognition_controller.py 不重名；线程文件全部带模块前缀。
+
+3. 每个文件的职责与硬约束
+根目录
+文件	职责	硬约束
+main.py	拿进程锁 → 调 app_init.buildSystem() → 注册信号 → startSystem() → 阻塞等退出 → stopSystem()	不写业务逻辑；不写 if not success:；不写 try/except 包业务
+app_init.py	读配置、建单例、建三个小控制层、建 EdgeControl，显式注入	只做“new + 注入 + 返回”，不写业务逻辑
+exceptions.py	ErrorCode(IntEnum) + EdgeError(Exception) 一个类	无逻辑；新增异常只加枚举值，不改类结构
+interfaces/（阶段 a）
+全部为 abc.ABC，零实现、零 import 业务模块。
+
+接口	方法（camelCase）
+IConfig	get(section, key, default=None) -> Any
+ILogger	rx(module, data) / tx(module, data) / info(module, msg) / error(module, msg, exception=None)
+IThread	start() / stop(timeout=3.0) / isRunning()
+ISocket	connect() / recv() / send(data) / close()；setOption 不进接口，收敛到 TcpSocket.__init__
+ICameraDevice	open() / readFrame() / close() / getStatus()
+IRecognitionEngine	loadModel(path) / infer(image) -> list（纯函数，为 rknn / .so 预留）
+IPlatformAdapter	joinPath / newline / signalMap / monotonicClock / lockFile
+SignalSink	onSignalDecoded(signal) / onFrameError(exception) / onLinkDown(reason, source) / onLinkUp()
+ICaptureSink	onCaptureSuccess(workerId, path) / onCaptureError(workerId, exception)
+IRecognitionSink	onRecognitionResult(workerId, ack, requestId) / onRecognitionError(workerId, exception)
+base/（阶段 b）
+文件	职责
+base_thread.py	BaseThread(IThread)：stopEvent、start() 幂等、stop(timeout=3.0) 置位 + 唤醒 + join、interruptibleWait(sec) -> bool（返回 False 表示该停）、抽象 runLoop()
+base_service.py	BaseService：init / start / stop 生命周期三件套，三个 Controller 继承
+platform/（阶段 b）
+文件	职责
+adapter.py	WindowsAdapter / LinuxAdapter（骨架 NotImplementedError + TODO）/ PlatformFactory；全项目唯一出现 sys.platform 的地方
+file_lock.py	进程单文件锁；Windows msvcrt.locking，Linux fcntl.flock 骨架；拿不到锁 → 抛 EdgeError(ErrorCode.CONFIG, ...) → main.py 退出
+infra/（阶段 c1 / c2）
+文件	职责
+config_manager.py	IniConfigManager(IConfig) + 类内 instance() + 类型推断（int/float/bool/list/str）+ Fail-Fast（文件缺失抛 EdgeError(CONFIG, ...)）+ get(section, key, default=None)：无 default 且缺失 → 抛 EdgeError(CONFIG, ...)；有 default → 返回默认值并记 info
+log_manager.py	LogManager(ILogger) + 类内 instance() + LogExecutor(BaseThread) + LogFileWriter；唯一 BlockingQueue、异步消费、按 logMode 路由、跨天 / 超大小滚动、磁盘不足清理、停机清空队列；error(exception=e) 自动附堆栈
+modules/tcp/（阶段 c3）
+文件	职责
+tcp_control_layer.py	TcpControlLayer(BaseService)：唯一 ISocket、sendLock、linkState、注入的 SignalSink；transitionTo(state, reason, source) -> bool 原子状态机（加锁，返回是否真正发生转移，心跳 / 解码并发宣告 DOWN 时靠它去重）；sendFrame 加锁发送
+tcp_reconnect_thread.py	TcpReconnectThread(BaseThread)：退避序列 [1,2,4,8,16,30] 构造注入、interruptibleWait 打断、成功调 onConnected 并退出
+tcp_decode_thread.py	DecodeThread(BaseThread)：阻塞 recv、半包 / 粘包 splitFrames、maxFrameSize 构造注入、坏帧调 onFrameError、断线调 onLinkDown(source="RECV")
+tcp_heart_thread.py	HeartThread(BaseThread)：防漂移 tick、buildFrameData、sendHeartFrame、失败调 onHeartSendFailed（门面内去重）
+tcp_socket.py	TcpSocket(ISocket)：SO_REUSEADDR / SO_KEEPALIVE / TCP_NODELAY，平台差异走 IPlatformAdapter
+硬约束：tcp/ 下不出现 config / cv2 / numpy / vision_core 字样；所有参数构造注入，模块内不 import 配置模块。
+
+modules/usb/（阶段 c4）
+文件	职责
+usb_controller.py	UsbController(BaseService)：init 校验路径、实例化 N 个 worker、注入 sink；startCapture 前置校验（已初始化且未采集中）→ 同时 start() 全部 worker → 立即返回
+usb_capture_worker.py	CaptureWorker(BaseThread)：双路 readFrame → 落盘 → 滚动存储（超 30% 删旧）→ 成功 / 失败回调
+usb_camera_device.py	CameraDevice(ICameraDevice) + CameraFactory：Windows 走索引 + CAP_DSHOW，Linux 走固定路径 + CAP_V4L2
+modules/recognition/（阶段 c5）
+文件	职责
+recognition_controller.py	RecognitionController(BaseService)：init 读配置、loadModel（仅一次）、实例化 worker；trigger(workerId, requestId) 校验 worker 空闲 → start() → 立即返回；trigger 内留 # TODO: NPU 并发限流，实测后加信号量
+recognition_worker.py	RecognitionWorker(BaseThread)：读两张图 → 拼接 → 画 ROI → 推理（3s 超时 构造注入）→ 空间归集 → 查表校验 → 组 ack → 回调
+recognition_yolo_engine.py	YoloEngine(IRecognitionEngine) + 类内 instance()：只 loadModel 一次；当前 CPU 跑通，为 rknn 留切换点
+recognition_utils.py	cropAndMerge / drawRoi / 空间归集 / 查表校验；纯函数，未来整体下沉 .so 的候选
+control/（阶段 d）
+准入标准：必须同时指挥 ≥2 个模块，才配放在 control/。
+
+文件	职责
+edge_control.py	EdgeControl(BaseService)：实现三个 Sink；routeSignal(type) 按注入的 asyncHandlers 字典分发（不写死业务字符串）；onLinkDown 统一决策（停心跳 / 停解码 / 启重连 / 开 EventCache）；stopSystem 严格串行：USB → 识别 → TCP → 日志
+event_cache.py	EventCache：DOWN 时缓存必须送达客户端的事件（识别 ack、失败应答、主动通知）；UP 时按 enabled 补发或丢弃；心跳帧不缓存；每条带递增 seq（只填不用）
+tests/
+unit/（纯逻辑）、contract/（接口契约，Fake 跑一遍）、integration/（TcpControlLayer + FakeSocket 等）、fakes/（FakeTcp / FakeCamera / FakeEngine / FakeLogger）。
+
+4. 依赖方向（review 时只看 import）
+text
+main.py
+  → app_init.py
+    → control/edge_control.py
+      → modules/tcp/tcp_control_layer.py
+      → modules/usb/usb_controller.py
+      → modules/recognition/recognition_controller.py
+        → modules/*/ 内部线程
+          → base/ + interfaces/ + platform/ + infra/
+硬规则：
+
+interfaces/ 不 import 任何实现
+
+base/ 不 import 业务模块
+
+modules/tcp/ 不 import modules/usb/ / modules/recognition/ / control/
+
+modules/*/controller.py 只依赖 interfaces/i_sinks.py，不依赖 control/edge_control.py
+
+control/ 是唯一同时 import 三个小控制层的地方
+
+禁止跨模块反向依赖；tcp/ 下不出现 config / cv2 / numpy / vision_core 字样
+
+5. 阶段划分与验收
+阶段	文件	验收
+0	exceptions.py + platform/file_lock.py + platform/adapter.py 骨架	双开拿锁失败；EdgeError 抛 / 捕 / 日志格式正确；PlatformFactory 在 Windows 上返回 WindowsAdapter，Linux 分支 NotImplementedError
+a	interfaces/ 全部	mypy 通过；零实现；全 camelCase；文件顶部 """ + 其余 ## 覆盖
+b	base/base_thread.py + base/base_service.py	Demo 子类验证 stop 能瞬间打断 interruptibleWait；join 超时强制返回；重复 stop 幂等
+c1	infra/config_manager.py	Fail-Fast；类型推断；get(default=) 两分支；instance() 双检锁
+c2	infra/log_manager.py	异步队列；滚动；停机清空；error(exception=e) 带堆栈
+c3	modules/tcp/	退避重连；心跳失败去重；解码半包 / 粘包；transitionTo 并发宣告去重；FakeSocket 联调
+c4	modules/usb/	4 线程并发拉起并立即返回；落盘；滚动删除；FakeCamera 联调
+c5	modules/recognition/	3s 超时；组帧；回调；FakeEngine 联调
+d	control/ + app_init.py + main.py	事件分发；EventCache 补发 / 丢弃；一键停机严格串行；进程锁；Windows 端到端

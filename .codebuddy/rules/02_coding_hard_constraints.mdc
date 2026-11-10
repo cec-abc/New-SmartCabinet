@@ -1,0 +1,70 @@
+---
+description: 编码硬约束最小必检清单：写 Python 前逐条对照，全文权威为编码规范.mdc 与方案 A，本规则不复述全文
+alwaysApply: true
+enabled: true
+---
+
+# 02 编码硬约束（最小必检清单）
+
+> 全文权威是 `.codebuddy/rules/编码规范.mdc` 与 `edge/docs/spec/编码规范规则.txt`（均为 L1）。
+> 本规则只做开工前/提交前的**逐条勾选**，不复制规范正文，也不放宽任何一条。
+
+## 1. 配置期禁令（当前生效）
+
+- 本轮为**流程配置期**：禁止写入 `edge/` 下任何 `.py`（含新建、重构、修 bug、补测试）。
+- 允许写入的只有 `edge/docs/**/*.md` 与工作区根 `.codebuddy/**` 的配置/文档。
+- 解除禁令必须由用户在阶段开工确认时明确下达。
+
+## 2. 语言与类型
+
+- [ ] Python 3.9+；模块 docstring 后第一行 `from __future__ import annotations`。
+- [ ] 内置泛型 `list[str]` / `dict[str, tuple[dict, float]]` / `set[str]` / `X | None`；
+      禁止 `typing.List` / `Dict` / `Optional`。
+- [ ] 所有函数参数、返回值、`__init__` 入参、类字段、私有方法均有类型标注。
+- [ ] 文件顶部唯一一段 `"""模块说明"""`，文件内其余注释禁止 `"""`；
+      类/方法/关键字段用 `## @brief` + `#  @param/@return/@raises`，新增逻辑用中文注释。
+- [ ] 不使用 `argparse`；mypy（3.9, strict）与 ruff 通过，`pyproject.toml` 已关闭 N802/N803/N806/N815。
+
+## 3. 命名（NAMING_AUTHORITY）
+
+- [ ] 类 `PascalCase`，方法/变量/参数 `camelCase`，常量 `UPPER_SNAKE_CASE`。
+- [ ] 文件名 snake_case 且全局唯一；线程文件带模块前缀；`__init__.py` 豁免。
+- [ ] 方法名全局不重复；仅 `init/start/stop/runLoop/isRunning` 多态实现豁免。
+
+## 4. 常量、异常与日志
+
+- [ ] 禁止魔鬼数字：`dedupCacheTtl`、`heartIntervalSec`、`maxFrameSize`、`backoffSeq`、
+      推理超时等一律构造注入，模块内不 import 配置模块，由上层从 `config.ini` 读取后传入。
+- [ ] 业务异常只用 `EdgeError` + `ErrorCode`（CONFIG / LINK_DOWN / FRAME_PARSE /
+      INFERENCE_TIMEOUT / CAPTURE）；内置异常不得穿越模块边界，跨边界前转 `EdgeError`。
+- [ ] 日志对外只有 `rx` / `tx` / `info` / `error(msg, exception=None)`；
+      `_runTask` 顶层异常用 `logger.error(module, msg, exception=e)`；`stop()` 统计用 `info`。
+- [ ] 日志异常码用 `e.code.name`；不做 payload 覆盖 `type` / `requestId` 的冗余检查，
+      仅在 `ack.update` 上一行注明「业务 payload 不得占用保留字段」。
+
+## 5. 线程、生命周期与并发
+
+- [ ] 所有线程继承 `BaseThread`，禁止裸 `threading.Thread`。
+- [ ] `stop(timeout=3.0)` = 置停止事件 → 唤醒可打断等待 → join → 超时强制返回；重复 stop 幂等。
+- [ ] 周期等待只用 `interruptibleWait(sec) -> bool`，`False` 表示收到停止指令；禁止裸 `time.sleep`。
+- [ ] Sink 回调只做轻量分发/入队，禁止在回调内执行阻塞 IO；重活回各自线程。
+- [ ] `TcpControlLayer` 链路状态迁移只用 `transitionTo(state, reason, source) -> bool`；
+      心跳与解码并发宣告 DOWN 靠返回值去重，禁止直接读写 `linkState`。
+- [ ] 单例不用基类：`IniConfigManager` / `LogManager` / `YoloEngine` 各自类内 `instance()`（双检锁），
+      普通构造仍可用于测试。
+- [ ] `main.py` 第一件事拿进程单文件锁（`acquireOrExit` 内部退出）；
+      `main()` 不用 `try/except` 或 `if not success:` 包裹业务流程。
+- [ ] 平台差异（路径分隔符、换行、信号映射、高精度时钟、文件锁）收敛到 `IPlatformAdapter`；
+      全项目只有 `PlatformFactory` 可出现 `sys.platform`。
+
+## 6. 函数与失败处理
+
+- [ ] `_runTask` 内 `reqId` 只提取一次；`_dispatchMessage` 用 `hitResp` 把锁外逻辑提平，避免深嵌套。
+- [ ] 单函数推荐 ≤40 行；`send` 返回 `False` 时不检查，链路断由 `onLinkDown` 感知。
+- [ ] `tcp/` 内部为通信健壮性保留的 `try/except`（含 `_runTask` 业务兜底）属必要容错，允许保留。
+
+## 7. 写后必做
+
+- 写完/改完任何 Python 代码（含小改动）→ 调用 `python-code-review` 检视一次并输出报告。
+- 检视项按阶段逐步收敛，不得用问题清单阻断当前阶段开工；跨阶段项标明归属阶段。
+- 可复用结论沉淀进 `references/lessons.md`，跨会话有效的信息写入项目记忆（见规则 04）。

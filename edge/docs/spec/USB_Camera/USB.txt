@@ -1,0 +1,225 @@
+||||||||||||||||||||||||||||||||||||||||类图|||||||||||||||||||||||||||||||||||||||||||
+classDiagram
+direction TB
+
+class Main {
+  +main() 进程入口
+}
+
+class EdgeControl {
+  -logger ILogger 全局日志接口
+  -usbController UsbController 采集门面，所有采集指令的唯一下发出口
+  +startSystem() 系统启动入口 (完成注入与初始化)
+  +startCaptureTask() 下发采集任务
+  +on_capture_success(workerId, path) 实现自 ICaptureSink
+  +on_capture_error(workerId, exception) 实现自 ICaptureSink
+}
+
+class ICaptureSink {
+  <<interface 采集上报契约>>
+  +on_capture_success(workerId, path) 采集成功上抛接口
+  +on_capture_error(workerId, exception) 采集异常上抛接口
+}
+
+class UsbController {
+  -config IConfig 依赖注入，读取系统配置
+  -logger ILogger 依赖注入，记录日志
+  -sink ICaptureSink 注入的解耦出口
+  -workers List~CaptureWorker~ 组合持有 N≤4 个采集线程
+  +init() 读配置、实例化Worker、注入sink
+  +startCapture() 依次拉起Worker线程(非阻塞)
+  +stopCapture() 中断所有采集线程
+  +on_worker_success(workerId, path) 接收完成回调，通过sink上报Edge
+  +on_worker_error(workerId, exception) 接收异常回调，通过sink上报Edge
+}
+
+class CaptureWorker {
+  <<Thread 线程>>
+  -workerId int 线程编号(1~N)
+  -camera1 CameraDevice 绑定的左路摄像头
+  -camera2 CameraDevice 绑定的右路摄像头
+  -saveDir String 专属存储文件夹
+  -logger ILogger 依赖注入
+  +run() 核心流程：截两路图并落盘
+  -_fetch_and_save(cam, filename) 抓单路图像并写入指定路径
+  -_check_roll_storage() 滚动存储检查，超30%删旧存新
+  -_report_success(workerId, path) 调 Controller.on_worker_success
+  -_report_error(workerId, exception) 调 Controller.on_worker_error
+}
+
+class CameraDevice {
+  -deviceAddr String 设备地址/索引
+  -status Enum 状态(ONLINE, OFFLINE, ERROR)
+  +read_frame() 读取一帧图像数据
+  +get_status() 返回当前物理连接状态
+}
+
+Main --> EdgeControl : 1. 调度
+EdgeControl ..|> ICaptureSink : 实现接口
+EdgeControl --> UsbController : 2. 直接下发指令
+UsbController --> ICaptureSink : 依赖注入
+UsbController *-- CaptureWorker : 组合持有 N≤4
+CaptureWorker *-- CameraDevice : 组合持有 x2
+
+
+||||||||||||||||||||||||||||||||||||||||流程图|||||||||||||||||||||||||||||||||||||||||||
+
+
+flowchart TD
+    %% 样式定义
+    classDef startEnd fill:#E6E6FA,stroke:#9370DB,stroke-width:2px,rx:20,ry:20;
+    classDef process fill:#E6E6FA,stroke:#9370DB,stroke-width:2px;
+    classDef condition fill:#E6E6FA,stroke:#9370DB,stroke-width:2px,shape:diamond;
+    classDef exception fill:#FFE4E1,stroke:#CD5C5C,stroke-width:2px;
+    classDef reserved fill:#F5F5F5,stroke:#999999,stroke-width:2px,stroke-dasharray: 5 5;
+
+    %% ================= 初始化流（最上） =================
+    InitStart(["【入口】EdgeControl 调用 UsbController.init()"]):::startEnd
+
+    InitReadCfg(["【读配置】1. config.getValue('usb.save_dir_1~4') 2. config.getValue('usb.camera_1~8')"]):::process
+
+    CheckInitCfg{"【配置校验】key 是否齐全？saveDir 是否存在且可写？"}:::condition
+
+    ThrowInitErr(["【初始化失败】调 LogManager.error('USB配置非法: '+key) 置 inited = False 逐级上抛异常至 EdgeControl"]):::exception
+
+    InitFork(["【实例化Worker】for i in 1..4: new CaptureWorker(workerId=i, saveDir=cfg[i], camera1, camera2)"]):::process
+
+    InitOK(["【初始化完成】调 LogManager.info('USB初始化完成, 配置N个Worker') 置 inited = True"]):::process
+
+    InitEnd(["init 返回"]):::startEnd
+
+    %% ================= 采集主调度流（中） =================
+    Start(["【入口】EdgeControl 调用 UsbController.startCapture()"]):::startEnd
+
+    CheckInited{"【前置校验】inited == True 且 未在采集中？"}:::condition
+
+    ThrowNotInit(["【拒绝启动】调 LogManager.error('USB未初始化或已在采集') 逐级上抛异常至 EdgeControl"]):::exception
+
+    ForkWorkers(["【拉起采集线程】for w in workers: w.start() (非阻塞) 调 LogManager.info('已拉起N个采集线程')"]):::process
+
+    ReturnImmediately(["startCapture 立即返回，不等待子线程"]):::startEnd
+
+    %% ================= 采集线程流（下，各线程独立异步） =================
+    WorkerStart(["【线程入口】CaptureWorker.run() 开始 调 LogManager.info('worker-id 开始采集')"]):::startEnd
+
+    FetchLeft(["【取左路帧】camera1.read_frame() 捕获 TimeoutError / IOError"]):::process
+
+    CheckLeft{"【左路取图】成功？"}:::condition
+
+    FetchRight(["【取右路帧】camera2.read_frame() 捕获 TimeoutError / IOError"]):::process
+
+    CheckRight{"【右路取图】成功？"}:::condition
+
+    ThrowFetch(["【取图失败】调 LogManager.error('worker-id 取图失败: '+cam.deviceAddr, e) 调 _report_error(workerId, e) 当前线程结束"]):::exception
+
+    Save(["【落盘两帧】拼名: w-id_left_时间戳.jpg / w-id_right_时间戳.jpg 调 _fetch_and_save(cam, filename) 依次写入 saveDir"]):::process
+
+    CheckSave{"【落盘】两帧都写入成功？"}:::condition
+
+    ThrowSave(["【落盘失败】调 LogManager.error('worker-id 落盘失败: '+path, e) 调 _report_error(workerId, e) 当前线程结束"]):::exception
+
+    Roll(["【滚动存储】调 _check_roll_storage(): 统计 saveDir 占用，超 30% 删最旧文件 删后仍超阈值 → 记 error 但不中断"]):::process
+
+    LogSuccess(["【记正常日志】调 LogManager.info('worker-id 采集完成: '+leftPath+', '+rightPath)"]):::process
+
+    CallbackSuccess(["【成功回调】调 _report_success(workerId, path) → Controller.on_worker_success(workerId, path) → EdgeControl.handle_capture_result(workerId, result) → Edge 触发该 workerId 的识别"]):::process
+
+    CallbackError(["【异常回调】调 _report_error(workerId, e) → Controller.on_worker_error(workerId, e) → EdgeControl.handle_capture_error(workerId, e)"]):::exception
+
+    WorkerEnd(["【线程结束】释放 CameraDevice 句柄"]):::startEnd
+
+    %% ================= 自检接口（预留，暂不实现） =================
+    SelfCheckReserved(["【自检接口·预留】UsbController.selfCheck() 空方法，暂不实现 CaptureWorker.check_camera() 空方法，暂不实现 后续实现时另起独立自检线程，不占用采集与主线程"]):::reserved
+
+    %% ================= 连线区 =================
+    %% 初始化流
+    InitStart --> InitReadCfg --> CheckInitCfg
+    CheckInitCfg -- "否（缺 key/路径不可写）" --> ThrowInitErr
+    CheckInitCfg -- "是" --> InitFork --> InitOK --> InitEnd
+
+    %% init 成功后，才允许 startCapture（这条边固定了上下顺序）
+    InitEnd -- "init 成功后" --> Start
+
+    %% 采集主调度
+    Start --> CheckInited
+    CheckInited -- "否" --> ThrowNotInit
+    CheckInited -- "是" --> ForkWorkers --> ReturnImmediately
+    ForkWorkers -. "异步拉起线程" .-> WorkerStart
+
+    %% Worker 主干
+    WorkerStart --> FetchLeft --> CheckLeft
+    CheckLeft -- "否" --> ThrowFetch --> CallbackError
+    CheckLeft -- "是" --> FetchRight --> CheckRight
+    CheckRight -- "否" --> ThrowFetch
+    CheckRight -- "是" --> Save --> CheckSave
+    CheckSave -- "否" --> ThrowSave --> CallbackError
+    CheckSave -- "是" --> Roll --> LogSuccess --> CallbackSuccess --> WorkerEnd
+
+    CallbackError --> WorkerEnd
+
+    %% 异常汇聚
+    ThrowInitErr -. "逐级上抛" .-> CallbackError
+    ThrowNotInit -. "逐级上抛" .-> CallbackError
+
+
+
+||||||||||||||||||||||||||||||||||||||||时序图|||||||||||||||||||||||||||||||||||||||||||
+
+
+
+sequenceDiagram
+    autonumber
+    participant Edge as EdgeControl (大控制层)
+    participant UC as UsbController (摄像头门面)
+    participant W as CaptureWorker (采集线程 1~4)
+    participant CAM as CameraDevice (物理接口)
+
+    Note over Edge, CAM: ===== 阶段一：任务调度与异步拉起 =====
+    Edge->>UC: startCaptureTask(targetWorkers)
+    activate UC
+    UC->>UC: 从 IConfig 读取配置，校验存储路径
+    UC->>W: start() 实例化并异步拉起 N 个线程 (N≤4)
+    
+    %% 主线程立即返回
+    UC-->>Edge: 立即返回 (不等待子线程)
+    deactivate UC
+
+    Note over W, CAM: ===== 阶段二：Worker 内部串行采集 (各线程完全独立) =====
+    activate W
+    loop 遍历绑定的2路摄像头
+        W->>CAM: read_frame()
+        
+        alt 取图/落盘 异常
+            CAM-->>W: 返回超时/写入失败 (抛出 Exception)
+            W->>W: logger.error() 记录异常现场
+            %% 异常逐级回调上抛
+            W-->>UC: 触发 on_worker_error(Exception)
+            activate UC
+            UC-->>Edge: handle_capture_error() 逐级上抛
+            deactivate UC
+            Note over W: 当前线程立即终止，不影响其他线程
+            
+        else 处理成功
+            CAM-->>W: 返回图像数据
+            W->>W: 执行 _fetch_and_save() 写入专属文件夹
+            W->>W: logger.info() 记录当前摄像头处理完成
+        end
+    end
+    Note over W: 2路处理完毕，线程静默退出
+    deactivate W
+
+    Note over Edge, CAM: ===== 阶段三：旁路自检流程 (独立于采集任务) =====
+    Edge->>UC: selfCheck()
+    activate UC
+    UC->>CAM: 遍历调用 get_status()
+    
+    alt 状态异常
+        CAM-->>UC: 返回 OFFLINE/ERROR
+        UC->>UC: logger.error() 记录自检异常
+        UC-->>Edge: handle_capture_error() 逐级上抛
+    else 状态正常
+        CAM-->>UC: 返回 ONLINE
+        UC->>UC: logger.info() 记录自检正常
+        UC-->>Edge: 返回自检成功
+    end
+    deactivate UC

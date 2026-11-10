@@ -1,0 +1,75 @@
+---
+description: 权威优先级与命名裁决（NAMING_AUTHORITY）：L1 契约层不可自动修改，图与文本冲突时以方案 A 与编码规范为准
+alwaysApply: true
+enabled: true
+---
+
+# 01 权威与命名裁决（NAMING_AUTHORITY）
+
+## 1. 权威优先级
+
+从高到低，低层不得覆盖高层；同级冲突一律停下问用户，不自行选择。
+
+1. 用户当次指令、已批准的契约 diff、用户新增/变更的裁决。
+2. **L1 契约层**：`edge/docs/spec/整体重构方案.txt`、`edge/docs/spec/编码规范规则.txt`、
+   `.codebuddy/rules/编码规范.mdc`、`edge/interfaces/*.py`、`edge/exceptions.py`、
+   `edge/pyproject.toml`、`edge/tests/contract/*`。
+3. 本目录其余 always 规则（02 / 03 / 04）。
+4. **L2 规格图资产**：`edge/docs/spec/**/*.txt`（mermaid / PlantUML 源码）与 `edge/docs/spec/**/*.png`。
+5. **L3 索引与流程配置**：`CODEBUDDY.md`、`edge/docs/spec/INDEX.md`、skill / commands / agents。
+6. **L4 状态与记忆**：`edge/docs/refactor/STAGE-STATE.md`、handoff、`references/lessons.md`、项目记忆。
+
+一句话：**文本 > 图，方案 A > 旧流程时序图，camelCase > 旧图 snake_case**。
+全部路径以工作区根为基准（`CODEBUDDY.md` §0），禁止混用 `docs/spec/...` 与 `edge/docs/spec/...`。
+
+## 2. 硬要求：L1 契约层保护
+
+- **不得自动修改 L1 契约层的任何文件**，包括"顺手修正命名""对齐图片""让测试先过"等理由。
+- 任何契约变更（接口签名、类名、ErrorCode 枚举、目录职责、阶段定义、工具链约束）必须
+  **先输出完整 diff（变更前后 + 影响面 + 受影响测试/Fake）并等待用户明确批准**，批准前不改文件。
+- 可以把"建议变更"写入阶段 handoff 或 `references/lessons.md`，但不能落地。
+- 开工前/收尾时由 `contract-guard` agent 做一次 L1 只读基线核验；发现变动立即报告并阻断收尾。
+- 允许新增：新接口 + 同步新增 `tests/fakes/` Fake、新增契约测试用例；不得静默修改既有断言。
+
+## 3. NAMING_AUTHORITY 裁决
+
+所有落到 `.py` 的标识符，按以下顺序裁决：
+
+1. `edge/docs/spec/整体重构方案.txt` §3 的接口方法表（`get` / `rx` / `tx` / `start` / `stop` / `isRunning` /
+   `connect` / `recv` / `send` / `close` / `readFrame` / `getStatus` / `loadModel` / `infer` /
+   `onSignalDecoded` / `onFrameError` / `onLinkDown` / `onLinkUp` / `onCaptureSuccess` /
+   `onCaptureError` / `onRecognitionResult` / `onRecognitionError`）。
+2. `编码规范.mdc` 的命名规范：类 `PascalCase`，方法/变量/参数 `camelCase`，常量 `UPPER_SNAKE_CASE`。
+3. 表中未列的标识符按第 2 条转换，并满足「方法名全局不重复」「文件名全局唯一且 snake_case」。
+
+L2 图中大量使用旧版 snake_case，**只表达语义，不提供命名**：
+
+| 旧图标识符 | 落地标识符 | 说明 |
+| --- | --- | --- |
+| `getValue(section, key)` | `get(section, key, default=None)` | L1 接口表 |
+| `route_signal` | `routeSignal` | 且只识别注入的 `asyncHandlers` 键 |
+| `on_capture_success` / `on_recognition_result` | `onCaptureSuccess` / `onRecognitionResult` | L1 接口表 |
+| `send_frame` / `read_frame` / `get_status` | `sendFrame` / `readFrame` / `getStatus` | L1 接口表 |
+| `_split_frames` / `_decode_and_parse` | `splitFrames` / `decodeAndParse` | 私有方法同样 camelCase |
+| `getInstance` / `ConfigManager` | `instance()` / `IniConfigManager` | 不用单例基类 |
+| `selfCheck` / `SelfChecker.check_all` | 留空接口 + TODO | 见裁决 D-01 |
+
+完整映射见 `.codebuddy/skills/edge-refactor/references/glossary.md`。
+`spec-reader` 产出的 `spec-digest.md` 必须给出命名裁决表，**禁止把图上方法名当 API**。
+
+## 4. 冲突处理流程
+
+1. 图与 L1 冲突（自检分支、能力降级、非 UP 启线程、去重逻辑、`PendingRequest` 重发等）：
+   **不改图、不改 L1**，以 L1 + `references/decisions.md` 的裁决为准。
+2. 把冲突点写入本阶段 handoff 的「遗留与裁决」段，标明归属阶段。
+3. 若冲突确实需要改契约 → 走 §2 的 diff + 批准流程。
+4. 禁止把图中文字转录进代码注释、文档或索引；图片只取语义。
+5. 图中「阶段 0~7」是运行期业务时序编号，与实施阶段 `0/a/b/c1/c2/c3/c4/c5/d`（共 9 个）
+   不是同一套编号；引用时必须写明是哪一套。
+
+## 5. 资料边界
+
+- `edge/docs/spec/INDEX.md` 是唯一逐文件登记处；新增/删除 spec 资料须同步更新它并记入 handoff。
+- 长资料只放 `.codebuddy/skills/edge-refactor/references/`；always 规则只保留裁决与门禁，不放全文。
+- 需要旧图术语对照时按需加载 `ref_legacy_mapping.mdc`；按阶段查资料加载 `ref_spec_semantics.mdc`；
+  写测试与出验收证据时加载 `test-visibility.mdc`。

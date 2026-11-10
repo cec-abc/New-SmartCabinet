@@ -1,0 +1,335 @@
+@startuml
+' ================= 基础样式配置 =================
+skinparam classAttributeIconSize 0
+skinparam monochrome false
+skinparam linetype ortho
+skinparam nodesep 60
+skinparam ranksep 60
+skinparam defaultFontSize 13
+skinparam defaultFontName "Microsoft YaHei"
+
+' 颜色配置
+skinparam class {
+    BackgroundColor #F9F9FB
+    BorderColor #7A8AA0
+    ArrowColor #55647E
+}
+skinparam interface {
+    BackgroundColor #E8F5E9
+    BorderColor #388E3C
+}
+skinparam package {
+    BackgroundColor #FAFAFA
+    BorderColor #BBBBBB
+}
+
+top to bottom direction
+
+' ================= 1. 入口与控制层 =================
+package "核心控制层" #E3F2FD {
+    class Main <<System Entry>> {
+        + main() : void
+        + shutdown() : void
+    }
+
+    class EdgeControl <<大控制层>> {
+        - config : IConfig
+        - logger : ILogger
+        - tcpLayer : TcpControlLayer
+        - usbController : UsbController
+        - recognitionController : RecognitionController
+        - eventCache : EventCache
+        + startSystem() : void
+        + stopSystem() : void
+        + route_signal(signal) : void
+        + onSignalDecoded(signal) : void
+        + onFrameError(exception) : void
+        + onLinkDown(reason, source) : void
+        + onLinkUp() : void
+        + on_capture_success(workerId, path) : void
+        + on_capture_error(workerId, exception) : void
+        + on_recognition_result(workerId, ack, request_id) : void
+        + on_recognition_error(workerId, exception) : void
+    }
+}
+
+' ================= 2. 抽象接口层 =================
+package "抽象接口层 (回调契约)" #E8F5E9 {
+    interface SignalSink <<TCP回调>> {
+        + onSignalDecoded(signal) : void
+        + onFrameError(exception) : void
+        + onLinkDown(reason, source) : void
+        + onLinkUp() : void
+    }
+
+    interface ICaptureSink <<USB回调>> {
+        + on_capture_success(workerId, path) : void
+        + on_capture_error(workerId, exception) : void
+    }
+
+    interface IRecognitionSink <<识别回调>> {
+        + on_recognition_result(workerId, ack, request_id) : void
+        + on_recognition_error(workerId, exception) : void
+    }
+
+    interface IConfig <<配置契约>> {
+        + getValue(section, key) : Any
+    }
+
+    interface ILogger <<日志契约>> {
+        + info(msg) : void
+        + error(msg) : void
+    }
+}
+
+' ================= 3. 业务模块 - TCP =================
+package "TCP 通信模块" #FFF3E0 {
+    class TcpControlLayer <<Facade>> {
+        - socket : Socket
+        - sendLock : Lock
+        - linkState : Enum(DOWN, CONNECTING, UP)
+        - sink : SignalSink
+        - reconnectThread : TcpReconnectThread
+        - decodeThread : DecodeThread
+        - heartThread : HeartThread
+        + start() : void
+        + stop() : void
+        + connect() : bool
+        + send_frame(frame) : bool
+        + startDecode() : void
+        + stopDecode() : void
+        + startHeart() : void
+        + stopHeart() : void
+        + sendHeartFrame(frame) : bool
+        + onHeartSendFailed(reason) : void
+        + onConnected() : void
+        + set_signal_sink(sink) : void
+    }
+
+    class TcpReconnectThread <<Thread>> {
+        - backoffSeq : List<int>
+        - isThreadRunning : bool
+        - stopEvent : Event
+        - retryIdx : int
+        - logger : ILogger
+        - config : IConfig
+        + run() : void
+        - tryConnect() : bool
+        - waitBackoff() : void
+        - resetBackoff() : void
+    }
+
+    class DecodeThread <<Thread>> {
+        - isThreadRunning : bool
+        - stopEvent : Event
+        - recvBuffer : bytes
+        - maxFrameSize : int
+        - tcpLayer : TcpControlLayer
+        - logger : ILogger
+        - config : IConfig
+        + startDecode() : void
+        + stopDecode() : void
+        + run() : void
+        - _split_frames() : List<byte>
+        - _decode_and_parse(frame) : Signal
+        - _report_signal(signal) : void
+        - _report_error(exception) : void
+    }
+
+    class HeartThread <<Thread>> {
+        - isHeartRunning : bool
+        - heartStopEvent : Event
+        - heartIntervalSec : float
+        - nextHeartTickMono : float
+        - tcpLayer : TcpControlLayer
+        - logger : ILogger
+        - config : IConfig
+        + startHeart() : void
+        + stopHeart() : void
+        + run() : void
+        - waitNextTick() : bool
+        - buildFrameData() : dict
+        - sendFrameAndReport() : void
+    }
+
+    class Socket <<物理接口>> {
+        + connect() : void
+        + recv() : bytes
+        + send(byte_stream) : void
+        + close() : void
+    }
+}
+
+' ================= 4. 业务模块 - USB =================
+package "USB 采集模块" #F3E5F5 {
+    class UsbController <<Facade>> {
+        - config : IConfig
+        - logger : ILogger
+        - sink : ICaptureSink
+        - workers : List<CaptureWorker>
+        + init(config, logger, sink) : void
+        + startCapture() : void
+        + stopCapture() : void
+        + on_worker_success(workerId, path) : void
+        + on_worker_error(workerId, exception) : void
+    }
+
+    class CaptureWorker <<Thread>> {
+        - workerId : int
+        - camera1 : CameraDevice
+        - camera2 : CameraDevice
+        - saveDir : String
+        - logger : ILogger
+        + run() : void
+        - _fetch_and_save(cam, filename) : void
+        - _check_roll_storage() : void
+        - _report_success(workerId, path) : void
+        - _report_error(workerId, exception) : void
+    }
+
+    class CameraDevice {
+        - deviceAddr : String
+        - status : Enum(ONLINE, OFFLINE, ERROR)
+        + read_frame() : Image
+        + get_status() : Enum
+    }
+}
+
+' ================= 5. 业务模块 - 识别 =================
+package "视觉识别模块" #E0F7FA {
+    class RecognitionController <<Facade>> {
+        - config : IConfig
+        - logger : ILogger
+        - sink : IRecognitionSink
+        - yoloEngine : YoloEngine
+        - workers : List<RecognitionWorker>
+        + init(config, logger, sink) : void
+        + trigger(workerId, request_id) : void
+        + stopRecognition() : void
+        + on_worker_result(workerId, ack, request_id) : void
+        + on_worker_error(workerId, exception) : void
+    }
+
+    class RecognitionWorker <<Thread>> {
+        - workerId : int
+        - saveDir : String
+        - roiConfig : Dict
+        - yoloEngine : YoloEngine
+        - logger : ILogger
+        + run() : void
+        - _load_images() : tuple
+        - _crop_and_merge() : Image
+        - _draw_roi() : Image
+        - _infer() : List
+        - _aggregate_roi() : RoiCheckResult
+        - _validate() : void
+        - _build_ack() : dict
+        - _report_result() : void
+        - _report_error() : void
+    }
+
+    class YoloEngine <<单例>> {
+        - model : Object
+        - modelPath : String
+        + load_model() : void
+        + infer(image) : List
+    }
+
+    class RecognitionUtils <<工具类>> {
+        + {static} crop_and_merge(images) : Image
+        + {static} draw_roi(image, roiConfig) : Image
+    }
+}
+
+' ================= 6. 基础设施层 =================
+package "基础设施模块" #EEEEEE {
+    class IniConfigManager <<单例>> {
+        - instance : IniConfigManager
+        - data : Map
+        + getInstance() : IConfig
+        + getValue(section, key) : Any
+        - _loadConfig() : void
+    }
+
+    class LogManager <<单例>> {
+        - instance : LogManager
+        - queue : BlockingQueue
+        - executor : LogExecutor
+        + getInstance() : LogManager
+        + init(config) : void
+        + info(msg) : void
+        + error(msg) : void
+        + stop() : void
+        - enqueue(level, msg) : void
+    }
+
+    class LogExecutor <<Thread>> {
+        - isLogRunning : bool
+        - currentFile : File
+        - writers : Map
+        + start(queue, config) : void
+        + stop() : void
+        + run() : void
+        - initNewFileOnStartup() : void
+        - rollFile() : void
+        - checkDiskSpaceAndClean() : void
+    }
+}
+
+' ======================== 核心连线关系 ========================
+
+' 1. Main 调度
+Main --> EdgeControl : 1. 调度
+EdgeControl -right-> Main : 2. 停机
+
+' 2. EdgeControl 实现三大回调接口 (竖向正交)
+EdgeControl ..|> SignalSink
+EdgeControl ..|> ICaptureSink
+EdgeControl ..|> IRecognitionSink
+
+' 3. EdgeControl 直调三大门面
+EdgeControl --> TcpControlLayer : 下发指令
+EdgeControl --> UsbController : 下发指令
+EdgeControl --> RecognitionController : 下发指令
+
+' 4. 门面依赖注入回调接口 (横向正交)
+TcpControlLayer --> SignalSink : 注入
+UsbController --> ICaptureSink : 注入
+RecognitionController --> IRecognitionSink : 注入
+
+' 5. 模块内组合持有
+TcpControlLayer *-- TcpReconnectThread
+TcpControlLayer *-- DecodeThread
+TcpControlLayer *-- HeartThread
+TcpControlLayer *-- Socket
+DecodeThread ..> Socket : 调用recv
+HeartThread ..> TcpControlLayer : 上报失败
+
+UsbController *-- CaptureWorker
+CaptureWorker *-- CameraDevice
+
+RecognitionController *-- YoloEngine
+RecognitionController *-- RecognitionWorker
+RecognitionWorker ..> YoloEngine : 共享调用
+RecognitionWorker ..> RecognitionUtils : 依赖
+
+' 6. 基础服务实现与依赖
+IniConfigManager ..|> IConfig
+LogManager ..|> ILogger
+LogManager *-- LogExecutor
+EdgeControl --> IConfig
+EdgeControl --> ILogger
+
+
+' ======================== 排版控制线（隐藏线，用于强制各层位置） ========================
+SignalSink -[hidden]down- TcpControlLayer
+ICaptureSink -[hidden]down- UsbController
+IRecognitionSink -[hidden]down- RecognitionController
+
+TcpControlLayer -[hidden]right- UsbController
+UsbController -[hidden]right- RecognitionController
+
+TcpReconnectThread -[hidden]down- IniConfigManager
+CaptureWorker -[hidden]down- LogManager
+
+@enduml

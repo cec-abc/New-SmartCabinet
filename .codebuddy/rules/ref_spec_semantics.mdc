@@ -1,0 +1,42 @@
+---
+description: Agent Requested：需要按实施阶段查 spec 资料、判断某张图属于哪个阶段、或核对图与 L1 语义冲突时加载
+alwaysApply: false
+enabled: true
+---
+
+# 按需：spec 资料路由
+
+> 逐文件登记的唯一权威是 `edge/docs/spec/INDEX.md`；本规则只做路由，不转录图内容。
+> **全部路径以工作区根为基准**（`CODEBUDDY.md` §0），统一写 `edge/docs/spec/...`。
+
+## 何时加载
+
+- 开工某阶段，需要知道该读哪些 `edge/docs/spec/` 资料。
+- 遇到图片，需要判断它表达哪段运行期语义、属于哪个实施阶段。
+- 评审时发现图与方案 A 的表述不一致，需要定位冲突来源。
+
+## 阶段 → 资料路由（共 9 个阶段）
+
+| 实施阶段 | 主要资料（路径以工作区根为基准） | 语义范围 |
+| --- | --- | --- |
+| `0` | 无专属图；`edge/docs/spec/整体流程/整体流程.txt` 第 1 段 | 启动、配置/日志初始化、TCP 首连时序 |
+| `a` | 无专属图；`edge/docs/spec/整体流程/整合类图代码.txt` | 回调契约与接口分层 |
+| `b` | 无专属图；各模块图中的线程/停机片段 | 线程生命周期与 `interruptibleWait` |
+| `c1` | `edge/docs/spec/配置文件接口/` | 配置单例、类型推断、Fail-Fast、注入 |
+| `c2` | `edge/docs/spec/日志/` | 异步队列、logMode 路由、滚动、停机清空 |
+| `c3` | `edge/docs/spec/TCP/断线重连/`、`edge/docs/spec/TCP/周期心跳帧/`、`edge/docs/spec/TCP/帧解码/`、`edge/docs/spec/整体流程/阶段0-3.png`、`edge/docs/spec/整体流程/阶段5-7.png` | 退避重连、心跳、半包粘包、断线恢复 |
+| `c4` | `edge/docs/spec/USB_Camera/`、`edge/docs/spec/整体流程/阶段4-5.png` | 并发采集、落盘、滚动删除、自检预留节点 |
+| `c5` | `edge/docs/spec/识别/`、`edge/docs/spec/整体流程/阶段4-5.png` | 触发、3s 超时、归集校验、组 ack |
+| `d` | `edge/docs/spec/整体流程/整合类图代码.txt`、`edge/docs/spec/整体流程/阶段5-7.png` | 事件分发、EventCache、一键停机串行 |
+
+## 使用口径
+
+- 每个 `.txt` 内含「类图 / 流程图 / 时序图」三段源码；同目录多张 `deepseek_mermaid_*.png`
+  是这三类的迭代渲染快照，文件名日期/哈希不承载语义，**不转录图中文字**。
+- 图中「阶段 0~7」= 运行期业务时序；实施阶段共 9 个（`0/a/b/c1/c2/c3/c4/c5/d`），禁止混用。
+- 图与 L1 冲突时以 L1 + `.codebuddy/skills/edge-refactor/references/decisions.md` 为准，
+  冲突点写入 handoff，不改图、不改 L1。
+- 图上方法名不是 API：命名裁决见 `ref_legacy_mapping.mdc` 与 `references/glossary.md`；
+  `spec-reader` 必须把映射写进 `edge/docs/refactor/stages/<id>/spec-digest.md`。
+- 更细的图索引见 `.codebuddy/skills/edge-refactor/references/diagram-index.md`；
+  写测试与出验收证据时另加载 `test-visibility.mdc`。

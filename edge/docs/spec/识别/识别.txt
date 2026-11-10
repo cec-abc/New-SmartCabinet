@@ -1,0 +1,262 @@
+||||||||||||||||||||||||||||||||||||||||类图|||||||||||||||||||||||||||||||||||||||||||
+
+classDiagram
+direction TB
+
+class Main {
+  +main() 进程入口
+}
+
+class EdgeControl {
+  -logger ILogger 全局日志接口
+  -recognitionController RecognitionController 识别门面，所有识别指令的唯一下发出口
+  +startSystem() 系统启动入口 (完成注入与初始化)
+  +triggerRecognition(workerId, request_id) 下发识别指令
+  +on_recognition_result(workerId, ack, request_id) 实现自 IRecognitionSink
+  +on_recognition_error(workerId, exception) 实现自 IRecognitionSink
+}
+
+class IRecognitionSink {
+  <<interface 识别上报契约>>
+  +on_recognition_result(workerId, ack, request_id) 识别结果上抛接口
+  +on_recognition_error(workerId, exception) 识别异常上抛接口
+}
+
+class RecognitionController {
+  -config IConfig 依赖注入，读取配置
+  -logger ILogger 依赖注入，记录日志
+  -sink IRecognitionSink 注入的解耦出口
+  -yoloEngine YoloEngine 统管全局唯一模型实例
+  -workers List~RecognitionWorker~ 组合持有 N≤4 个工作线程
+  +init() 读配置、加载模型、实例化Worker、注入sink
+  +trigger(workerId, request_id) 校验后拉起对应Worker
+  +stopRecognition() 中断线程，优雅退出
+  +on_worker_result(workerId, ack, request_id) 接收完成回调，通过sink上报Edge
+  +on_worker_error(workerId, exception) 接收异常回调，通过sink上报Edge
+}
+
+class YoloEngine {
+  -model 具体加载的YOLO模型对象
+  -modelPath String 模型路径
+  +load_model() 加载模型，仅执行一次
+  +infer(image) 执行推理返回List，超时抛异常
+}
+
+class RecognitionWorker {
+  <<Thread 线程>>
+  -workerId int 线程编号，与USB Worker一一对应
+  -saveDir String 该 workerId 对应的USB落盘目录
+  -roiConfig Dict ROI配置
+  -yoloEngine YoloEngine 依赖注入的模型实例
+  -logger ILogger 依赖注入
+  +run() 读图->拼接->画ROI->推理->归集->校验->组帧->回调
+  -_load_images() 读 left 与 right 两张图
+  -_crop_and_merge() 左右拼接
+  -_draw_roi() 按 roiConfig 画ROI框
+  -_infer() 调 yoloEngine，超3秒抛异常
+  -_aggregate_roi() 空间归集得 RoiCheckResult
+  -_validate() 查表校验，三大优先级判定并打印报告
+  -_build_ack() 按协议组装 recognize_ack 的 items
+  -_report_result() 调 Controller.on_worker_result
+  -_report_error() 调 Controller.on_worker_error
+}
+
+class RecognitionUtils {
+  <<工具类>>
+  +static crop_and_merge(images) 拼接图片
+  +static draw_roi(image, roiConfig) 画ROI框
+}
+
+Main --> EdgeControl : 1. 调度
+EdgeControl ..|> IRecognitionSink : 实现接口
+EdgeControl --> RecognitionController : 2. 直接下发指令
+RecognitionController --> IRecognitionSink : 依赖注入
+RecognitionController *-- YoloEngine : 初始化时单例加载
+RecognitionController *-- RecognitionWorker : 组合持有 N≤4
+RecognitionWorker ..> YoloEngine : 共享调用 infer()
+RecognitionWorker ..> RecognitionUtils : 依赖调用
+
+
+||||||||||||||||||||||||||||||||||||||||流程图|||||||||||||||||||||||||||||||||||||||||||
+
+
+flowchart TD
+    classDef startEnd fill:#E6E6FA,stroke:#9370DB,stroke-width:2px,rx:20,ry:20;
+    classDef process fill:#E6E6FA,stroke:#9370DB,stroke-width:2px;
+    classDef condition fill:#E6E6FA,stroke:#9370DB,stroke-width:2px,shape:diamond;
+    classDef exception fill:#FFE4E1,stroke:#CD5C5C,stroke-width:2px;
+
+    %% 主线程：调度与返回
+    Start(["入口: EdgeControl 调用<br/>RecognitionController.trigger(workerId)"]):::startEnd
+    CheckBusy{"is_busy == False 且 workerId 合法?"}:::condition
+    ReturnBusy["logger.error 记录<br/>返回 busy 或拒绝"]:::exception
+
+    Fork["按需实例化该 workerId 的 RecognitionWorker<br/>并调用 start() 拉起线程 (N≤4, 非阻塞)"]:::process
+    ReturnImmediately(["主线程立刻返回<br/>不等待子线程"]):::startEnd
+
+    %% 子线程：独立执行
+    Fetch["1. 读图: 从 saveDir 读 left 与 right 两张图"]:::process
+    CheckFetch{"读图成功?"}:::condition
+    ThrowFetch["logger.error 记录异常<br/>当前线程结束"]:::exception
+
+    Merge["2. 拼接: RecognitionUtils.crop_and_merge()"]:::process
+    Draw["3. 画框: RecognitionUtils.draw_roi()"]:::process
+    Infer["4. 推理: YoloEngine.infer(image)"]:::process
+    CheckInfer{"推理成功且未超 3 秒?"}:::condition
+    ThrowInfer["logger.error 记录推理失败<br/>当前线程结束"]:::exception
+
+    Aggregate["5. 空间归集: 按 ROI 归集得 RoiCheckResult"]:::process
+    Validate["6. 查表校验: CLASS_ITEM_MAP 与 ROI_BIND_MAP<br/>按三大优先级判定并打印校验报告"]:::process
+    CheckMap{"查表命中?"}:::condition
+    MapUnknown["logger.error 记录<br/>该项按 unknown 处理，继续其余项"]:::exception
+
+    BuildAck["7. 组装 recognize_ack 的 items + request_id"]:::process
+    CheckBuild{"组帧成功?"}:::condition
+    ThrowBuild["logger.error 记录组帧异常<br/>当前线程结束"]:::exception
+
+    LogSuccess["logger.info 记录识别完成"]:::process
+    CallbackResult["调用 Controller.on_worker_result(ack, request_id)"]:::process
+    CallbackError["调用 Controller.on_worker_error(workerId, exception)"]:::exception
+
+    ControllerForwardResult["Controller 接收回调<br/>转发给 EdgeControl"]:::process
+    ControllerForwardError["Controller 接收回调异常<br/>逐级上抛至 EdgeControl"]:::exception
+
+    EndWorker(["Worker 线程结束"]):::startEnd
+
+    %% ================= 连线区 =================
+    Start --> CheckBusy
+    CheckBusy -->|否| ReturnBusy --> ReturnImmediately
+    CheckBusy -->|是| Fork
+    Fork --> ReturnImmediately
+
+    Fork -. 独立拉起线程 .-> Fetch
+
+    Fetch --> CheckFetch
+    CheckFetch -->|否| ThrowFetch --> CallbackError
+    CheckFetch -->|是| Merge
+    Merge --> Draw
+    Draw --> Infer
+    Infer --> CheckInfer
+    CheckInfer -->|否| ThrowInfer --> CallbackError
+    CheckInfer -->|是| Aggregate
+    Aggregate --> Validate
+    Validate --> CheckMap
+    CheckMap -->|否| MapUnknown --> BuildAck
+    CheckMap -->|是| BuildAck
+    BuildAck --> CheckBuild
+    CheckBuild -->|否| ThrowBuild --> CallbackError
+    CheckBuild -->|是| LogSuccess --> CallbackResult
+
+    CallbackResult --> ControllerForwardResult --> EndWorker
+    CallbackError --> ControllerForwardError --> EndWorker
+
+
+||||||||||||||||||||||||||||||||||||||||时序图|||||||||||||||||||||||||||||||||||||||||||
+
+sequenceDiagram
+    autonumber
+    participant Edge as EdgeControl(大控制层)
+    participant RC as RecognitionController(识别门面)
+    participant W as RecognitionWorker(工作线程)
+    participant FS as saveDir 文件
+    participant YOLO as YoloEngine(模型单例)
+    participant TCP as TcpControlLayer(门面)
+    participant SOCK as Socket(物理接口)
+
+    Note over Edge,SOCK: 阶段一 Edge 拉起识别门面，初始化并加载模型
+
+    Edge->>RC: init()
+    RC->>RC: 读取配置: config.getValue("recognition.model_path")
+    RC->>RC: 读取配置: config.getValue("usb.save_dir_1~4") 等识别参数
+
+    alt 配置缺失或非法
+        RC->>RC: 调 LogManager.error() 记录
+        RC-->>Edge: 逐级上抛 Exception(配置异常)
+        Note over RC: 标记识别不可用
+    else 配置正常
+        RC->>YOLO: load_model(模型路径)
+        alt 模型加载失败
+            YOLO-->>RC: 抛异常
+            RC->>RC: 调 LogManager.error() 记录
+            RC-->>Edge: 逐级上抛 Exception(模型加载失败)
+            Note over RC: 标记识别不可用
+        else 加载成功
+            YOLO-->>RC: 模型就绪(仅加载一次)
+            RC->>RC: 调 LogManager.info() 记录
+        end
+    end
+
+    Note over Edge,SOCK: 阶段二 Edge 触发识别，按 workerId 拉起对应线程
+
+    Edge->>RC: trigger(workerId, request_id)
+    RC->>RC: 校验 is_busy 与 workerId 合法性
+
+    alt 忙或参数非法
+        RC->>RC: 调 LogManager.error() 记录
+        RC-->>Edge: 返回 busy 或拒绝
+        Edge->>TCP: send_frame(失败应答)
+        TCP->>SOCK: socket.send(byte_stream)
+    else 校验通过
+        RC->>W: start() 拉起该 workerId 线程(N≤4, 非阻塞)
+        RC-->>Edge: 立即返回(不等待子线程)
+    end
+
+    Note over W,SOCK: 阶段三 Worker 内部串行执行(各线程独立)
+
+    W->>FS: 读取该 workerId 的 left 与 right 两张图
+
+    alt 读图失败(文件缺失/损坏)
+        FS-->>W: 抛异常
+        W->>W: 调 LogManager.error() 记录
+        W-->>RC: on_worker_error(Exception)
+        RC-->>Edge: 逐级上抛
+        Edge->>TCP: send_frame(失败应答)
+    else 读图成功
+        W->>W: crop_and_merge() 左右拼接
+        W->>W: draw_roi() 画 ROI 框
+
+        W->>YOLO: infer(image)
+        alt 推理异常 或 推理超时(>3s)
+            YOLO-->>W: 抛 InferenceException / 超时
+            W->>W: 调 LogManager.error() 记录(推理失败)
+            W-->>RC: on_worker_error(InferenceException)
+            RC-->>Edge: 逐级上抛
+            Edge->>TCP: send_frame(失败应答)
+        else 推理成功
+            YOLO-->>W: 返回检测 List
+            W->>W: 空间归集 + 查表校验(CLASS_ITEM_MAP / ROI_BIND_MAP)
+
+            alt 查表未命中(类别组合/ROI_ID 无映射)
+                W->>W: 调 LogManager.error() 记录(该项按 unknown 处理)
+            else 查表正常
+                W->>W: 按优先级判定，打印校验报告
+            end
+
+            W->>W: 组装 recognize_ack(items + request_id)
+
+            alt 组帧异常(字段缺失/类型错)
+                W->>W: 调 LogManager.error() 记录
+                W-->>RC: on_worker_error(Exception)
+                RC-->>Edge: 逐级上抛
+                Edge->>TCP: send_frame(失败应答)
+            else 组帧正常
+                W->>W: 调 LogManager.info() 记录(识别完成)
+                W-->>RC: on_worker_result(ack, request_id)
+                RC-->>Edge: 上报正常结果
+            end
+        end
+    end
+
+    Note over Edge,SOCK: 阶段四 Edge 将 ack 经 TCP 发回上位机
+
+    Edge->>TCP: send_frame(recognize_ack 或 失败应答)
+    TCP->>SOCK: socket.send(byte_stream)
+
+    alt 发送失败
+        SOCK-->>TCP: 抛 IO 异常
+        TCP-->>Edge: 返回 false
+        Edge->>Edge: 调 LogManager.error() 记录(按断线流程处理)
+    else 发送成功
+        SOCK-->>Edge: 回给上位机
+        Edge->>Edge: 调 LogManager.info() 记录
+    end

@@ -1,0 +1,63 @@
+---
+description: 依赖方向与目录准入：单向依赖链、control/ 准入标准、模块独立性、禁词与文件命名边界
+alwaysApply: true
+enabled: true
+---
+
+# 03 依赖方向与目录
+
+## 1. 唯一依赖方向（review 只看 import）
+
+```
+main.py → app_init.py → control/edge_control.py
+  → modules/tcp/tcp_control_layer.py
+  → modules/usb/usb_controller.py
+  → modules/recognition/recognition_controller.py
+    → 各模块内部线程 → base/ + interfaces/ + platform/ + infra/
+```
+
+- `control/` 是**唯一**同时 import 三个小控制层的地方。
+- 模块门面只依赖 `interfaces/i_sinks.py`，禁止 import `control/edge_control.py`。
+- 禁止跨模块反向依赖：`modules/tcp/` 不得 import `modules/usb/`、`modules/recognition/`、`control/`；
+  `modules/usb/`、`modules/recognition/` 亦然。
+- `app_init.py` 只做 `new + 注入 + 返回`，不写业务逻辑；`main.py` 不写业务逻辑。
+
+## 2. 目录准入
+
+| 目录 | 准入内容 | 禁止内容 |
+| --- | --- | --- |
+| `interfaces/` | `abc.ABC` 接口契约，零实现 | 任何实现、任何业务模块 import |
+| `base/` | `BaseThread` / `BaseService` 通用生命周期 | import 任何业务模块 |
+| `platform/` | `WindowsAdapter` / `LinuxAdapter` 骨架、`PlatformFactory`、进程文件锁 | 业务逻辑 |
+| `infra/` | `IniConfigManager`、`LogManager` | 业务模块反向引用 |
+| `modules/<module>/` | 该模块的门面、线程、设备/工具，全部留在本目录 | 其他模块、control/ |
+| `control/` | ① 同时指挥 ≥2 个模块的协调对象（`EdgeControl`）；② 仅服务该协调者、生命周期绑定的辅助组件（`EventCache`） | 单一模块门面 |
+| `tests/fakes/` | 与 `interfaces/` 契约一致的 Fake | 与接口不一致的实现 |
+
+- **单一模块的门面必须留在 `modules/<module>/` 内**，不得因为"方便协调"上提到 `control/`。
+- 新增接口必须同步新增对应 Fake；新增线程文件必须带模块前缀。
+
+## 3. 模块独立性
+
+- 一个模块的线程、门面、设备、工具全部放在该模块文件夹内。
+- `tcp/` 下禁止出现 `config`、`cv2`、`numpy`、`vision_core` 字样；所有参数构造注入。
+- `TcpControlLayer` / `TcpComm` 不感知具体业务字符串（`recognize`、`version_query` 等），
+  只识别注入的 `asyncHandlers` 字典键。
+- 摄像头寻址：Linux 配置写固定路径（如 `/dev/cam_left`），Windows 侧写索引；
+  差异收敛在 `CameraDevice` / `CameraFactory` 与平台适配层。
+- `.so` 先不管；接口按「纯函数下沉」设计，控制层永远留 Python。
+
+## 4. 文件与命名边界
+
+- 文件名 snake_case 且**全局唯一**（`usb_controller.py` ≠ `recognition_controller.py`）；
+  线程文件带模块前缀（`tcp_decode_thread.py`、`usb_capture_worker.py`）；`__init__.py` 豁免。
+- 类名 `PascalCase`；方法名全局不重复，多态实现 `init/start/stop/runLoop/isRunning` 豁免。
+- 旧图里的 `ConfigManager`、`LogExecutor` 分层只作语义参考，落地以方案 A 的
+  `infra/config_manager.py`、`infra/log_manager.py` 为准。
+
+## 5. 引导与部署形态
+
+- 引导文件固定 `app_init.py`，不用 `bootstrap.py` / `app_context.py`。
+- 源码 + venv 部署，不打包；Windows 先跑通，Linux 分支留 `NotImplementedError` + TODO 骨架。
+- 进程锁：Windows `msvcrt.locking`，Linux `fcntl.flock` 骨架；拿不到锁立即退出。
+- 目录结构变更属于 L1 契约变更：必须给 diff 并等用户批准，不得自动调整。

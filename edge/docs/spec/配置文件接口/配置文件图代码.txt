@@ -1,0 +1,175 @@
+||||||||||||||||||||||||||||||||||||||||类图|||||||||||||||||||||||||||||||||||||||||||
+
+
+@startuml
+skinparam classAttributeIconSize 0
+skinparam monochrome false
+skinparam class {
+    BackgroundColor #F3F0FF
+    BorderColor #B8A2E3
+    ArrowColor #7A8AA0
+}
+
+class EdgeControl <<大控制层>> {
+  + startSystem() : void // 启动时初始化配置并注入
+}
+
+interface IConfig <<interface 配置契约>> {
+  + getInstance() : IConfig // 获取单例（面向接口返回）
+  + getValue(section: String, key: String) : Any // 统一的获取值入口（自动返回已推断类型的值）
+}
+
+class IniConfigManager <<实现类 (INI格式)>> {
+  - {static} _instance : IniConfigManager // 全局唯一实例
+  - _data : Map<String, Map<String, Any>> // 私有 maplist，存储 KV 键值对
+  + getInstance() : IConfig // 静态懒加载：为空则 new 并 load()
+  + getValue(section: String, key: String) : Any // 【重点】直接返回已自动推断的 int/str/list，业务层无需强转
+  - _loadConfig(filePath: String) : void // 私有方法：解析 INI 文件，并在此时完成数字与 List 的自动转换
+}
+
+class TcpControlLayer <<TCP 业务模块>> {
+  - tcpPort : int
+  + init(config: IConfig) : void
+}
+
+class LogManager <<日志业务模块>> {
+  + init(config: IConfig) : void
+}
+
+' ================= 关系连线 =================
+EdgeControl ..> IniConfigManager : 1. 调用 getInstance()
+EdgeControl ..> IConfig : 2. 持有接口并注入
+
+IniConfigManager ..|> IConfig : 实现
+
+TcpControlLayer ..> IConfig : 依赖(调用 getValue)
+LogManager ..> IConfig : 依赖(调用 getValue)
+
+note right of TcpControlLayer
+  # TCP 模块代码：
+  cfg = IniConfigManager.getInstance()
+  # 直接取，类型全是底层推断好的，拿来即用
+  self.host = cfg.getValue("comm", "host")    # 返回 str
+  self.port = cfg.getValue("comm", "port")    # 返回 int
+  self.ips = cfg.getValue("comm", "backup")   # 返回 list
+end note
+
+@enduml
+
+||||||||||||||||||||||||||||||||||||||||流程图|||||||||||||||||||||||||||||||||||||||||||
+
+flowchart TD
+    classDef entry_exit fill:#F3F0FF,stroke:#B8A2E3,stroke-width:2px,color:#333
+    classDef action fill:#E8F5E9,stroke:#81C784,stroke-width:1px,color:#1B5E20
+    classDef decision fill:#FDE0E0,stroke:#E57373,stroke-width:2px,color:#333
+    classDef exception fill:#FFEBEE,stroke:#E57373,stroke-width:2px,color:#B71C1C
+
+    A([【入口】Main.main]) --> B(EdgeControl.startSystem)
+    B --> C(调用 ConfigManager.getInstance)
+    
+    C --> D{实例是否已存在}
+    D -- 否 (已存在) --> E[返回现有实例]
+    D -- 是 (首次加载) --> F[加锁实例化，调用 _loadConfig]
+    
+    F --> G{文件是否存在且可读}
+    G -- 否 --> H[【抛出异常】FileNotFoundError]
+    H --> I(异常逐级抛至 EdgeControl)
+    I --> J(EdgeControl 记录 Error 日志\n阻断启动 Fail-Fast)
+    
+    G -- 是 --> K{解析是否合法}
+    K -- 否 --> L[【抛出异常】ParseError]
+    L --> I
+    
+    K -- 是 --> M[遍历解析 Section 与 Key]
+    M --> N(调用 _inferType 推断类型)
+    N --> O[存入私有字典 _data]
+    O --> P(返回单例实例)
+    
+    E --> Q
+    P --> Q(EdgeControl 记录 Info 日志\n配置加载成功)
+    
+    Q --> R(EdgeControl 注入实例给业务模块)
+    R --> S([业务模块启动运行])
+    
+    S --> T{业务调用 getValue(section, key)}
+    T -- 存在 --> U[返回正确类型的值]
+    U --> V([业务直接使用，无需强转])
+    
+    T -- 不存在 --> W[【抛出异常】KeyError]
+    W --> X(业务模块将异常抛至 EdgeControl)
+    X --> Y(EdgeControl 记录 Error 日志)
+    Y --> Z([业务模块执行降级或中断])
+
+||||||||||||||||||||||||||||||||||||||||时序图|||||||||||||||||||||||||||||||||||||||||||
+
+
+sequenceDiagram
+    autonumber
+    participant Main as Main (系统入口)
+    participant EC as EdgeControl (大控制层)
+    participant CM as IniConfigManager (单例/实现IConfig)
+    participant CM_Map as configmanager:_map (私有字典)
+    participant Biz as 业务模块 (如TCP模块)
+
+    rect rgb(240, 248, 255)
+    Note over Main, CM_Map: 阶段一：系统启动与配置加载
+    Main->>EC: 1. startSystem()
+    activate EC
+    
+    %% EC 调用 getInstance() 返回实现 IConfig 接口的实例
+    EC->>CM: 2. getInstance()
+    activate CM
+    
+    alt 实例已存在
+        CM-->>EC: 3a. 直接返回单例引用 (该实例已实现 IConfig 接口)
+    else 首次加载
+        CM->>CM: 3b. 实例化对象
+        CM->>CM: 4. _loadConfig(内部绝对路径)
+        
+        alt 文件不存在或不可读
+            CM-->>EC: 5a. 抛出 FileNotFoundError
+            Note over EC: 调用 Logger.error() 记录异常信息
+            EC->>EC: 阻断系统启动 (Fail-Fast)
+        else 文件正常
+            CM->>CM: 5b. 解析 INI 文件内容
+            loop 遍历每个 Section 与 Key
+                CM->>CM: 6. _inferType(value)
+                CM->>CM_Map: 7. 存入转换后的键值对
+            end
+            CM-->>EC: 8. 返回单例实例 (即实现了 IConfig 的对象)
+        end
+    end
+    deactivate CM
+    Note over EC: 调用 Logger.info() 记录“配置加载成功”
+    end
+
+    rect rgb(255, 250, 240)
+    Note over EC, Biz: 阶段二：配置分发与注入 (EC 将获取到的实例当作 IConfig 注入)
+    EC->>Biz: 9. 实例化业务模块，传入该实例
+    activate Biz
+    Note right of EC: 此时业务模块拿到的就是 IConfig 接口
+    Biz-->>EC: 初始化完成
+    deactivate Biz
+    deactivate EC
+    end
+
+    rect rgb(245, 255, 245)
+    Note over Biz, CM_Map: 阶段三：业务运行期读取
+    %% 业务模块调用接口方法，实际由 IniConfigManager 实现
+    Biz->>CM: 10. getValue("comm", "port")
+    activate CM
+    CM->>CM_Map: 11. 查找对应 Key
+    
+    alt Key 不存在
+        CM_Map-->>CM: 未找到
+        CM-->>Biz: 12a. 抛出 KeyError 或返回 None
+        Biz->>EC: 12c. 异常逐级上报至 EdgeControl
+        Note over EC: 调用 Logger.error() 记录业务异常
+        Note over Biz: 业务模块捕获异常执行降级
+    else Key 存在
+        CM_Map-->>CM: 返回推断后的值 (如 int 9000)
+        CM-->>Biz: 12b. 直接返回正确类型 (底层已转换好)
+        Note over Biz: 业务层直接使用，无需强转
+    end
+    deactivate CM
+    end

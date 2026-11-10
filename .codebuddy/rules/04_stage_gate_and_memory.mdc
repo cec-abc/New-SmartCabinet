@@ -1,0 +1,89 @@
+---
+description: 阶段门禁与记忆协议：9 阶段序列与状态推进、四步执行编排与人工签字、必交 test-report.md、验收证据、沉淀与记忆写入边界
+alwaysApply: true
+enabled: true
+---
+
+# 04 阶段门禁与记忆协议
+
+## 1. 阶段序列
+
+**共 9 个阶段**：固定为 `0 → a → b → c1 → c2 → c3 → c4 → c5 → d`，不跳阶、不合并且不另起平行目录。
+完整交付范围、验收项编号与现有 27 个 `.py` 判定见 `.codebuddy/skills/edge-refactor/references/stage-catalog.md`；
+运行态见 `edge/docs/refactor/STAGE-STATE.md`（本轮配置期**全 pending**）。
+全部路径以工作区根为基准（`CODEBUDDY.md` §0）；`stages/<id>/` = `edge/docs/refactor/stages/<id>/`。
+
+## 2. 状态机
+
+| 状态 | 含义 | 谁能改 |
+| --- | --- | --- |
+| `pending` | 未开工（初始态） | 初始生成 |
+| `in_progress` | 用户已确认开工 | 用户确认后由 `/stage` 记录 |
+| `done` | 验收全通过、用户本人 review 签字、沉淀完成 | 用户确认后由 `/stage-done` 记录 |
+| `blocked` | 阻塞，等待用户裁决 | 记录原因 + 等待用户 |
+
+- 未获用户明确确认，**不得**把阶段推进到 `in_progress` / `done`。
+- 一次只做已确认范围内的文件；范围外留 TODO 或移交后续阶段，标明归属阶段。
+- 检视/评审区分「本阶段必须改」与「后续阶段收敛」，不得用问题清单阻断当前阶段开工。
+
+## 3. 开工门禁（`/stage`）与执行编排
+
+只读，不改代码、不改状态（除经用户确认的状态记录）。必须依次：
+
+1. 读 `CODEBUDDY.md` §0/§2/§4、`edge/docs/spec/INDEX.md` 本阶段条目、
+   `references/stage-catalog.md`（含 §0）、`references/decisions.md`、`STAGE-STATE.md`。
+2. 加载 `edge-refactor` skill；由 `stage-opener` 输出含**交付文件白名单**的开工清单。
+3. 由 `contract-guard` 做 L1 基线核验，记录「L1 无变更 / 有变更 + diff」。
+4. 输出：白名单、验收项编号、对应 spec 资料、适用裁决、明确禁止事项。
+5. 等用户确认后才可动手写代码。
+
+确认开工后，四步 + 人工闸门按序执行（编排见 `.codebuddy/commands/stage.md` §1）：
+
+| 步 | 执行者 | 产物 | 准出 |
+| --- | --- | --- | --- |
+| 1 | `spec-reader` | `stages/<id>/spec-digest.md` | 禁止把图上方法名当 API |
+| 2 | `implementer` | 白名单内实现 | 只改白名单，不写测试 |
+| 3 | `test-writer` | 测试代码 + `stages/<id>/test-report.md` | 六节齐备，见 `test-visibility.mdc` |
+| **闸门** | **用户本人** | **代码 review 签字** | **未签字不得进入步骤 4，不许代签** |
+| 4 | `stage-verifier` | 举证表（无最终结论） | 只举证，最终结论由用户签字 |
+
+## 4. 收尾门禁（`/stage-done`）
+
+必须齐备，缺一不可：
+
+- [ ] **必交物 `edge/docs/refactor/stages/<id>/test-report.md` 六节齐备；缺件 / 缺节 / 第 ⑥ 节无未覆盖项 → 验收一律判红、不得收尾**（`.codebuddy/rules/test-visibility.mdc`）。
+- [ ] `stages/<id>/spec-digest.md` 已由 `spec-reader` 产出。
+- [ ] **用户本人已 review 代码并签字**；任何 agent 不得代签。
+- [ ] 验收项逐条给出**证据**（命令、输出、测试名、report 对应用例），不是"应该通过"。
+- [ ] `ruff`、`mypy`（3.9 strict）、`pytest` 结果；契约测试与 Fake 一致性核对。
+- [ ] 测试函数有验收项编号注释、无 `assert True` 空洞断言、无为变绿而改被测代码。
+- [ ] 写过/改过 Python → `python-code-review` 检视报告一次，并标明跨阶段遗留项。
+- [ ] `contract-guard` 复核 L1 **零自动变更**；若确需变更，附 diff 且仍处于「等待批准」状态。
+- [ ] 按 `edge/docs/refactor/HANDOFF-TEMPLATE.md` 产出 handoff，记录 `test-report.md` 路径。
+- [ ] 更新 `STAGE-STATE.md`（含证据栏与更新时间）、`references/lessons.md`。
+- [ ] `stage-verifier` **只出举证表**；**用户确认并签字**后才把状态改为 `done`。
+
+## 5. 记忆协议
+
+写入顺序：handoff → `STAGE-STATE.md` → `references/lessons.md` → 项目记忆 → 技能经验库。
+
+**写入**：
+- 跨会话有效的用户裁决、方案决策、被确认/否决的做法、反复出现的问题模式、
+  阶段归属与验收结论 → 项目记忆（`MEMORY.md` 建索引 + 独立 topic 文件）。
+- 可复用的检视结论 → `references/lessons.md`（阶段 / 触发 / 结论 / 是否上升为规则）。
+- 新裁决必须同步 `references/decisions.md` 与项目记忆，并注明生效日期与影响阶段。
+
+**不写入**：
+- 代码结构、文件路径清单、架构快照、git 历史、一次性缺陷细节、临时状态与进度。
+- 已在 `CODEBUDDY.md` / rules / spec 中文档化的内容（避免重复与不一致）。
+
+写入前先查 `MEMORY.md` 去重；记忆与当前文件冲突时以当前观察为准并更新/删除旧记忆。
+
+## 6. 硬红线
+
+- **不得自动修改 L1 契约层；契约变更必须给 diff 并等用户批准**（规则 01 §2）。
+- 本轮配置期禁止写 `edge/` 下任何 `.py`。
+- **不得代用户签署最终 review 结论**；缺 `test-report.md` 或缺签字一律不得收尾。
+- 禁止静默推进状态、静默改验收项、静默改 spec 原文或图片、静默改既有规则全文。
+- 三条已定裁决（D-01 自检留空接口 / D-02 非 UP 不启其他线程 / D-03 去重不做、seq 只填不用）
+  在每个阶段都要复核，不得借"按图实现"绕过。

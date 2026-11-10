@@ -1,0 +1,193 @@
+||||||||||||||||||||||||||||||||||||||||类图|||||||||||||||||||||||||||||||||||||||||||
+
+classDiagram
+direction TB
+
+class Main {
+  +main() 进程入口，仅负责拉起EdgeControl
+  +shutdown() 进程退出，触发系统优雅停机
+}
+
+class EdgeControl {
+  -tcpLayer 通信门面，所有通信指令的唯一下发出口
+  -logger 全局日志接口
+  +startSystem() 系统启动入口
+  +stopSystem() 系统停机入口
+  +startHeart() 下发启动心跳指令
+  +stopHeart() 下发停止心跳指令
+  +onLinkDown(reason, source) 统一断连决策点：停心跳、启重连
+  +onLinkUp() 链路恢复入口：补报缓存后，恢复心跳
+}
+
+class SignalSink {
+  <<interface>>
+  +onLinkDown(reason, source) 断线向上抛出接口（心跳失败/接收断开共用）
+  +onLinkUp() 链路恢复向上抛出接口
+}
+
+class TcpControlLayer {
+  -socket 唯一网络套接字
+  -sendLock 发送锁，确保多线程写socket互斥
+  -linkState 链路状态枚举（DOWN/CONNECTING/UP）
+  -signalSink 注入的解耦出口
+  -heartThread 组合持有的心跳线程
+  +start() 启动基础收发线程与重连线程
+  +stop() 停止所有线程并关闭socket
+  +setSignalSink(sink) 注入解耦出口
+  +startHeart() 透传指令至heartThread.startHeart()
+  +stopHeart() 透传指令至heartThread.stopHeart()
+  +sendHeartFrame(frame) 加锁发送心跳字节流；状态非UP直接返回false
+  +onHeartSendFailed(reason) 心跳失败入口；过滤重复异常后上抛
+  +onConnected() 重连成功：置UP，上抛onLinkUp，由Edge层决定恢复心跳
+}
+
+class HeartThread {
+  <<Thread 线程>>
+  -isHeartRunning 线程运行标志
+  -heartStopEvent 停止事件，用于瞬间打断周期等待
+  -heartIntervalSec 心跳周期（默认3.0秒）
+  -nextHeartTickMono 下一周期单调时钟基准，防节拍漂移
+  -workerThread 底层线程对象
+  -tcpLayer 门面引用，用于发送和失败上报
+  -logger ILogger 依赖注入，用于记录组帧/发送异常日志
+  -config IConfig 依赖注入，用于读取系统配置
+  +startHeart() 幂等启动：调config读取心跳周期，清事件、置标志、建线程
+  +stopHeart() 幂等停止：置标志、set事件唤醒等待
+  +run() 主循环：等周期、读全局变量、组帧、发送
+  -waitNextTick() 周期等待，返回false表示收到停机指令
+  -buildFrameData() 读取全局变量，组装心跳帧字典；异常时调logger.error()
+  -sendFrameAndReport() 调门面发送；失败则记日志并调门面上报
+}
+
+Main --> EdgeControl : 1. 调度
+EdgeControl ..|> SignalSink : 实现接口
+EdgeControl --> TcpControlLayer : 2. 启停心跳
+TcpControlLayer *-- HeartThread : 组合持有
+TcpControlLayer --> SignalSink : 依赖 / 注入
+HeartThread ..> TcpControlLayer : 发送心跳 / 上报失败
+
+
+
+||||||||||||||||||||||||||||||||||||||||流程图|||||||||||||||||||||||||||||||||||||||||||
+
+
+flowchart TD
+    NodeStart(["入口: EdgeControl调用 tcpLayer.startHeart()"]) --> Step1["TcpControlLayer 透传调用 heartThread.startHeart()"]
+    Step1 --> Init["初始化状态: isHeartRunning=true, heartStopEvent.clear(), 建线程<br/>从 config 读取心跳周期"]
+    Init --> Loop{"run() 主循环: isHeartRunning?"}
+    
+    Loop -->|否| NodeEnd(["线程退出, 资源释放"])
+    Loop -->|是| WaitTick["调用 waitNextTick(): 算剩余时间并阻塞等待"]
+    WaitTick --> CheckStop{"被 stopHeart() 唤醒?"}
+    CheckStop -->|"是 (stopEvent已Set)"| NodeEnd
+    
+    CheckStop -->|"否 (3秒周期到)"| Build["调用 buildFrameData(): 读全局变量组装JSON字典"]
+    Build --> CheckBuild{"组帧异常?"}
+    
+    %% 组帧异常
+    CheckBuild -->|"是 (类型错误/缺字段)"| LogErr1["调 LogManager.error(): 组帧失败"]
+    LogErr1 --> ThrowBuildErr["调 tcpLayer 逐级抛异常至 EdgeControl"]
+    ThrowBuildErr --> Loop
+    
+    CheckBuild -->|否| Send["调用 sendFrameAndReport(): 调门面发送"]
+    Send --> TcpSend["TcpControlLayer.sendHeartFrame(): 加锁并写socket"]
+    TcpSend --> CheckLink{"linkState 是否 UP?"}
+    CheckLink -->|否| ReturnFalse["直接返回 false, 不触发底层IO"]
+    CheckLink -->|是| IOErr{"底层 socket.send 异常?"}
+    
+    %% 网络 IO 异常
+    IOErr -->|是| CatchErr["捕获异常并返回 false"]
+    IOErr -->|否| ReturnTrue["返回 true"]
+    
+    ReturnFalse --> CheckResult{"发送成功?"}
+    CatchErr --> CheckResult
+    ReturnTrue --> LogInfo["调 LogManager.info(): 记录心跳发送成功"] --> CheckResult
+    
+    %% 结果处理
+    CheckResult -->|是| Loop
+    CheckResult -->|否| LogErrIO["调 LogManager.error(): 记录网络发送异常"]
+    
+    LogErrIO --> ReportFail["调用 tcpLayer 逐级抛异常至 EdgeControl"]
+    
+    ReportFail --> Dedup{"门面检查 linkState 是否已非UP?"}
+    Dedup -->|是| Loop
+    
+    Dedup -->|否| SetDown["门面置 linkState=DOWN, 调 SignalSink.onLinkDown()"]
+    SetDown --> EdgeDecide["EdgeControl.onLinkDown(): 决策停心跳并启重连"]
+    EdgeDecide --> StopHeart["调用 tcpLayer.stopHeart()"]
+    StopHeart --> SetStop["HeartThread.stopHeart(): isHeartRunning=false, heartStopEvent.set()"]
+    SetStop --> NodeEnd
+
+
+
+||||||||||||||||||||||||||||||||||||||||时序图|||||||||||||||||||||||||||||||||||||||||||
+
+
+sequenceDiagram
+    autonumber
+    participant Main
+    participant EC as EdgeControl(大控制层)
+    participant SINK as SignalSink
+    participant TCL as TcpControlLayer(门面)
+    participant HB as HeartThread(心跳线程)
+    participant SOCK as Socket(物理接口)
+
+    Main->>EC: startSystem()
+    EC->>TCL: start() (启动接收与重连基础线程)
+    EC->>TCL: startHeart()
+    TCL->>HB: startHeart() (清事件, 建线程)
+    
+    Note over HB: 心跳线程进入 run() 循环
+    HB->>HB: 读取配置: config.getValue("heart_interval")
+
+    loop 正常周期 (每 3 秒)
+        HB->>HB: waitNextTick() (Event.wait 阻塞)
+        HB->>HB: buildFrameData() (读全局变量组帧)
+        
+        alt 组帧异常 (类型错误/缺字段)
+            %% 1. 异常日志本地记录
+            HB->>HB: 调 LogManager.error() 记录
+            %% 2. 逐级抛异常
+            HB-->>TCL: 抛出 Exception(组帧失败)
+            TCL-->>SINK: 逐级向上抛 Exception
+            SINK-->>EC: 逐级上抛至大控制层
+            Note over HB: 跳过本轮，继续下一周期
+            
+        else 组帧成功
+            HB->>TCL: sendHeartFrame(frame)
+            TCL->>SOCK: socket.send(byte_stream)
+            SOCK-->>TCL: 发送成功
+            TCL-->>HB: 返回 true
+            %% 正常日志本地记录
+            HB->>HB: 调 LogManager.info("心跳发送成功")
+        end
+    end
+
+    Note over HB, SOCK: 此时发生网络异常
+    HB->>TCL: sendHeartFrame(frame)
+    TCL->>SOCK: socket.send(byte_stream)
+    SOCK-->>TCL: 抛出 IO 异常
+    TCL->>TCL: try-except 捕获并返回 false
+    TCL-->>HB: 返回 false
+
+    %% 1. 异常日志本地记录
+    HB->>HB: 调 LogManager.error("心跳发送失败")
+    %% 2. 上报门面
+    HB->>TCL: onHeartSendFailed(reason) 
+    
+    alt linkState 已非 UP
+        TCL->>TCL: 忽略 (防止重复宣告断连)
+    else linkState 仍为 UP
+        TCL->>TCL: linkState = DOWN
+        %% 3. 逐级抛异常
+        TCL-->>SINK: 抛出 LinkDownException(reason, source=HEART)
+        SINK-->>EC: 逐级上抛至大控制层
+        
+        EC->>TCL: stopHeart()
+        TCL->>HB: stopHeart()
+        HB->>HB: isHeartRunning=false, heartStopEvent.set()
+        Note over HB: waitNextTick 被瞬间打断, 线程结束
+        
+        EC->>TCL: 启动断线重连流程
+        Note right of TCL: 重连成功后 TCL.onConnected()<br/>上抛 onLinkUp(), Edge层恢复心跳
+    end

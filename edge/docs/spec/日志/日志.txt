@@ -1,0 +1,266 @@
+||||||||||||||||||||||||||||||||||||||||类图|||||||||||||||||||||||||||||||||||||||||||
+
+@startuml
+skinparam classAttributeIconSize 0
+skinparam monochrome false
+skinparam class {
+    BackgroundColor #F3F0FF
+    BorderColor #B8A2E3
+    ArrowColor #7A8AA0
+}
+
+class Main <<System Entry>> {
+  + main() : void // 程序启动入口
+}
+
+class EdgeControl <<大控制层>> {
+  - config : IConfig // 依赖配置接口（纯数据契约）
+  - logger : ILogger // 依赖日志接口
+  + startSystem() : void // 1. 初始化配置单例 2. 将配置注入日志模块
+  + stopSystem() : void // 停机入口
+}
+
+interface IConfig <<interface 配置契约>> {
+  + getLogDir() : String // 获取日志目录
+  + getMaxFileSize() : long // 获取单文件大小上限
+  + getTcpPort() : int // 获取TCP端口
+  + getReconnectBackoff() : List<int> // 获取重连退避序列
+}
+
+class ConfigManager <<Facade 单例门面>> {
+  - {static} instance : ConfigManager // 全局单例
+  - realConfig : IConfig // 持有实际的配置数据对象
+  + {static} getInstance() : ConfigManager
+  + load(configFilePath: String) : void // 触发加载，new一个FileConfig并赋值给realConfig
+  + getConfig() : IConfig // 供全局调用，返回接口引用
+}
+
+class FileConfig <<实现 读取配置>> {
+  - logDir : String
+  - maxFileSize : long
+  - tcpPort : int
+  + FileConfig(filePath: String) // 构造函数内部读取JSON/INI文件并解析
+  + getLogDir() : String
+  + getMaxFileSize() : long
+  + getTcpPort() : int
+}
+
+interface ILogger <<interface 日志契约>> {
+  + init(config: IConfig) : void // 接收配置接口，初始化自己
+  + rx(module: String, data: String) : void
+  + tx(module: String, data: String) : void
+  + info(module: String, msg: String) : void
+  + error(module: String, msg: String) : void
+}
+
+class LogManager <<Facade 日志门面>> {
+  - {static} instance : LogManager
+  - executor : LogExecutor
+  + {static} getInstance() : LogManager
+  + init(config: IConfig) : void // 从接口里读取日志参数，传给executor
+  + rx(module: String, data: String) : void
+  + tx(module: String, data: String) : void
+  + info(module: String, msg: String) : void
+  + error(module: String, msg: String) : void
+}
+
+class LogExecutor <<Thread 线程>> {
+  - logDir : String
+  - maxFileSize : long
+  + start(config: IConfig) : void // 接收配置并启动线程
+  - run() : void
+  - rollFile() : void
+  - checkAndCreate() : void
+  - checkDiskSpaceAndClean() : void
+}
+
+Main --> EdgeControl : 启动
+EdgeControl ..> IConfig : 读取配置
+ConfigManager *-- IConfig : 组合持有
+FileConfig ..|> IConfig : 实现契约
+EdgeControl ..> ILogger : 注入配置并初始化
+LogManager ..|> ILogger : 实现
+LogManager *-- LogExecutor : 组合
+@enduml
+
+
+||||||||||||||||||||||||||||||||||||||||流程图|||||||||||||||||||||||||||||||||||||||||||
+
+
+
+flowchart TD
+    %% 定义样式
+    classDef sys fill:#f3f0ff,stroke:#b8a2e3,stroke-width:2px;
+    classDef err fill:#fff7ec,stroke:#d97a1e,stroke-width:2px,stroke-dasharray: 5 5;
+    classDef log fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px;
+    classDef writer fill:#e0f7fa,stroke:#00acc1,stroke-width:2px;
+
+    %% 模块划分
+    subgraph 业务与调度层
+        A[Main 启动]:::sys --> B[EdgeControl 获取 IConfig 配置]:::sys
+        B --> C[获取 LogManager 单例并调用 init]:::sys
+        E[业务模块产生日志\nTCP/IO/其他]:::sys -->|调用 rx / tx| F[LogManager.enqueue]:::log
+    end
+
+    subgraph 日志门面层
+        C -->|实例化并启动| D[LogExecutor 线程]
+        C -->|初始化| G[(唯一 BlockingQueue 阻塞队列)]
+        
+        F --> H[1. 立刻获取当前系统时间]:::log
+        H --> I[2. 组装纯 JSON 字符串\n含时间戳及日志类型]:::log
+        I --> J[3. put 入队，立刻返回]:::log
+        J -.-> G
+    end
+
+    subgraph 后台路由分发线程
+        D --> K[初始化执行器]
+        K --> K1[读取 logMode]
+        K --> K2[按模式实例化并初始化 Writer]
+        K2 -.->|异常降级| K_ERR[控制台打印，线程终止]:::err
+        
+        K2 --> M{while isLogRunning?}:::log
+        G -.->|take 阻塞消费| N[取出带时间戳的 JSON]:::log
+        N --> M
+        
+        M -->|True| R{路由判断\n依据 logMode 与 type}:::log
+        R -->|模式 1: 合并| W_ALL[调用 Writer_ALL]:::writer
+        R -->|模式 0: 分开| W_SPLIT[调用对应的 Writer_RX / TX / INFO / ERROR]:::writer
+    end
+
+    subgraph LogFileWriter 内部执行逻辑
+        W_ALL --> P{跨天 或 超 maxFileSize?}:::writer
+        W_SPLIT --> P
+        
+        P -->|Yes| Q[触发 rollFile 并检查清理]:::writer
+        Q --> Q1{磁盘剩余空间 < 30%?}:::writer
+        Q1 -->|Yes| Q2[调用 cleanOldFiles 删除最旧文件]:::writer
+        Q1 -->|No| Q3[新建并打开新文件句柄]:::writer
+        Q2 --> Q3
+        
+        Q3 --> T[writeToFile 物理落盘]:::writer
+        P -->|No| T
+        
+        T -.->|异常捕获防崩溃| U[IO写入异常，打印告警，跳过本行]:::err
+        T --> M
+    end
+
+    subgraph 停机流程
+        W[EdgeControl.stopSystem]:::sys --> X[logger.stop]:::sys
+        X --> Y[executor.stop -> isLogRunning = false]:::sys
+        Y -.->|唤醒 take()| M
+        M -->|False| V[清空剩余队列并退出]:::log
+    end
+
+
+
+
+||||||||||||||||||||||||||||||||||||||||时序图|||||||||||||||||||||||||||||||||||||||||||
+
+
+
+sequenceDiagram
+    autonumber
+    participant Main as Main 函数
+    participant EC as EdgeControl (大控制层)
+    participant LM as LogManager (单例门面)
+    participant Q as BlockingQueue (唯一队列)
+    participant LE as LogExecutor (后台线程)
+    participant LW as LogFileWriter (文件写入器)
+    participant Biz as 业务模块 (如TCP/IO)
+
+    rect rgb(240, 248, 255)
+    Note over Main, LW: 阶段一：系统初始化与资源分配
+    Main->>EC: 1. startSystem(config)
+    activate EC
+    EC->>LM: 2. getInstance().init(config)
+    activate LM
+    LM->>Q: 3. 实例化唯一阻塞队列
+    LM->>LE: 4. 实例化并调用 start(queue, config)
+    activate LE
+    LE->>LE: 5. 读取 logMode (1=合并, 0=分开)
+    
+    alt logMode == 1 (合并模式)
+        LE->>LW: 6a. 实例化 1 个 Writer (ALL类型)
+        activate LW
+        LW->>LW: 7a. 扫描最大流水号并创建新文件
+    else logMode == 0 (分开模式)
+        LE->>LW: 6b. 实例化 4 个 Writer (RX/TX/INFO/ERROR)
+        activate LW
+        LW->>LW: 7b. 各自扫描对应类型的最大流水号并建新文件
+    end
+    
+    opt 初始化文件创建异常
+        LW-->>LE: 抛出 IO 异常 (目录无权限等)
+        LE->>LE: 记录错误，降级控制台输出，终止线程
+    end
+    LW-->>LE: 初始化完成
+    LE-->>LM: 线程进入 run() 阻塞等待
+    LM-->>EC: 初始化完成
+    deactivate LM
+    deactivate EC
+    deactivate LE
+    deactivate LW
+    end
+
+    rect rgb(255, 250, 240)
+    Note over Biz, Q: 阶段二：日志产生与异步缓冲
+    Biz->>LM: 8. rx(module, data) / tx() / info() / error()
+    activate LM
+    LM->>LM: 9. enqueue()
+    Note right of LM: 【核心】业务线程内获取高精度时间戳
+    LM->>LM: 10. 序列化为携带 type 的 JSON 字符串
+    LM->>Q: 11. put(jsonStr) 入队
+    Q-->>LM: 12. 入队成功
+    LM-->>Biz: 13. 返回，业务线程无磁盘 I/O 阻塞
+    deactivate LM
+    end
+
+    rect rgb(245, 255, 245)
+    Note over Q, LW: 阶段三：后台异步消费与路由落盘
+    loop 循环检测，直至 isLogRunning 为 false
+        LE->>Q: 14. take() 阻塞读取
+        Q-->>LE: 15. 返回 JSON 字符串
+        activate LE
+        LE->>LE: 16. 解析 JSON 提取 type
+        LE->>LE: 17. 根据 logMode 与 type 路由至对应 Writer
+        
+        LE->>LW: 18. write(jsonStr)
+        activate LW
+        LW->>LW: 19. 判断：跨天 或 超过 maxFileSize
+        
+        opt 触发文件滚动
+            LW->>LW: 20. rollFile() 切换文件句柄
+            LW->>LW: 21. checkDiskSpaceAndClean()
+            opt 剩余空间低于阈值
+                LW->>LW: 22. cleanOldFiles() 删除最旧文件
+            end
+            LW->>LW: 23. 创建新文件
+        end
+
+        LW->>LW: 24. 执行物理写入操作
+        opt 发生 IO 异常
+            LW->>LW: 25. 捕获异常，控制台告警
+            Note right of LW: 跳过当前行，保持线程循环运行
+        end
+        LW-->>LE: 写入完成
+        deactivate LW
+        deactivate LE
+    end
+    end
+
+    rect rgb(255, 235, 235)
+    Note over EC, LW: 阶段四：系统停机与资源释放
+    EC->>LM: 26. stopSystem() -> logger.stop()
+    activate EC
+    activate LM
+    LM->>LE: 27. executor.stop()
+    LE->>LE: 28. 置位 isLogRunning = false
+    Note right of LE: 唤醒处于阻塞状态的 take() 方法
+    LE->>Q: 29. 退出循环，清空队列剩余数据
+    LE->>LW: 30. 依次关闭所有 Writer 的文件句柄
+    deactivate LW
+    LE-->>LM: 31. 线程结束
+    LM-->>EC: 32. 停机流程完成
+    deactivate LM
+    deactivate EC
+    end

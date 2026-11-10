@@ -1,0 +1,1651 @@
+===== HISTORICAL CHANGE RECORD — NON-AUTHORITATIVE =====
+本文件仅为 2026-11-10 治理流程配置的变更记录（unified diff 汇编），不是配置、不是 spec 资料、不是权威来源。
+- 任何 agent 不得把本文件当 spec 资料读取，不得引用其中 `-` 删除行的旧口径
+  （例如「10 个阶段」、以 edge/ 为基准的裸 `docs/spec/...` 路径、旧验收项措辞）。
+- 权威来源只有：`CODEBUDDY.md`、`.codebuddy/rules/`、`.codebuddy/skills/edge-refactor/`、
+  `edge/docs/spec/INDEX.md`、`edge/docs/refactor/STAGE-STATE.md` 及 L1 契约层。
+- 本文件不参与任何阶段的开工、验收或沉淀；不得 `git apply`；历史内容只读存档。
+========================================================
+
+===== .codebuddy\agents\contract-guard.md =====
+diff --git "a/F:\\new zhineng\\.codebuddy\\_diffbak\\.codebuddy\\agents\\contract-guard.md" "b/f:\\new zhineng\\.codebuddy\\agents\\contract-guard.md"
+index 4ab59c3..d35e825 100644
+--- "a/F:\\new zhineng\\.codebuddy\\_diffbak\\.codebuddy\\agents\\contract-guard.md"	
++++ "b/f:\\new zhineng\\.codebuddy\\agents\\contract-guard.md"	
+@@ -36,5 +36,6 @@ tools: Read, Grep, Glob
+ - **只读**：绝不修复、回滚、格式化或"顺手对齐"任何文件；不执行写操作。
+ - 不批准变更；批准权只属于用户。即使变更看起来是修正笔误，也照报不误。
+-- 不参与验收举证、不开工清单、不写 handoff 与记忆。
++- 不参与验收举证、不开工清单、不写 handoff 与记忆；
++  不核验 `edge/docs/refactor/stages/<id>/test-report.md` 内容（属 `stage-verifier`）、不代用户签字。
+ - 配置期额外核对：`edge/` 下没有被新建/修改的 `.py`（本轮只允许 `edge/docs/**/*.md`）。
+ - 收尾时若 L1 有未批准变更，收尾结论必须为 `blocked`，不得给出「通过」。
+
+===== .codebuddy\agents\implementer.md =====
+diff --git "a/F:\\new zhineng\\.codebuddy\\_diffbak\\.codebuddy\\agents\\implementer.md" "b/f:\\new zhineng\\.codebuddy\\agents\\implementer.md"
+index e69de29..3008cbd 100644
+--- "a/F:\\new zhineng\\.codebuddy\\_diffbak\\.codebuddy\\agents\\implementer.md"	
++++ "b/f:\\new zhineng\\.codebuddy\\agents\\implementer.md"	
+@@ -0,0 +1,35 @@
++---
++name: implementer
++description: 实现官（单一职责：只改白名单文件）。按 /stage 开工清单与 spec-digest.md 实现本阶段交付文件；不改白名单外任何文件、不写测试、不改 L1/spec/状态。
++tools: Read, Grep, Glob, Edit, Write, Bash
++---
++
++# implementer — 实现官
++
++## 唯一职责
++
++在用户确认开工后，按开工清单的**白名单**实现本阶段交付文件。
++
++## 白名单定义
++
++- 白名单 = `/stage` 输出并经用户确认的「交付文件清单」，逐文件列明路径与操作（新增 / 修改）。
++- 白名单外的文件一律不动；确需增删时停下报用户，批准后才更新清单并记入 handoff。
++
++## 输入
++
++- 开工清单（白名单）、`edge/docs/refactor/stages/<id>/spec-digest.md`。
++- L1 契约层（只读）、4 条 always 规则、`references/decisions.md`。
++
++## 输出
++
++- 白名单内的实现文件（遵守 `02_coding_hard_constraints.mdc` 与 `03_dependency_and_layout.mdc`）。
++- 改动清单：每个文件改了什么、对应哪个验收项、有哪些 TODO 与归属阶段——供**用户本人 review**。
++
++## 边界
++
++- **不写测试**（属于 `test-writer`）、不写 `test-report.md`、不写 `spec-digest.md`。
++- **不改** L1 契约层、`edge/docs/spec/**` 原文/图片、`STAGE-STATE.md`、
++  验收项定义、既有测试断言、既有 Fake 契约。
++- 测试失败时只修白名单内的实现，不得改测试、改预期值或删用例来让测试变绿。
++- 任何契约变更必须给 diff 并等用户批准，不得自动落地。
++- 配置期（禁写 `edge/` 下 `.py`）未由用户解除前，本 agent 不得执行。
+
+===== .codebuddy\agents\memory-steward.md =====
+diff --git "a/F:\\new zhineng\\.codebuddy\\_diffbak\\.codebuddy\\agents\\memory-steward.md" "b/f:\\new zhineng\\.codebuddy\\agents\\memory-steward.md"
+index 9e33637..cc240a8 100644
+--- "a/F:\\new zhineng\\.codebuddy\\_diffbak\\.codebuddy\\agents\\memory-steward.md"	
++++ "b/f:\\new zhineng\\.codebuddy\\agents\\memory-steward.md"	
+@@ -1,5 +1,5 @@
+ ---
+ name: memory-steward
+-description: 沉淀官（单一职责：写 L4 资产与记忆）。阶段收尾时按模板写 handoff、更新 STAGE-STATE 证据栏、追加 lessons.md、同步项目记忆与检视经验库；不写代码、不改 L1、不决定阶段状态。
++description: 沉淀官（单一职责：写 L4 资产与记忆）。阶段收尾时按模板写 handoff、更新 STAGE-STATE 证据栏（含 test-report.md 路径）、追加 lessons.md、同步项目记忆与检视经验库；不写代码、不改 L1、不代用户签字、不决定阶段状态。
+ tools: Read, Grep, Glob, Edit, Write
+ ---
+@@ -10,20 +10,24 @@ tools: Read, Grep, Glob, Edit, Write
+ 
+ 把阶段收尾的结论**持久化**到 L4 资产与跨会话记忆，保证下次开工能直接接上。
++仅在 `stage-verifier` 出完举证表、且**用户本人 review 签字在位**后执行沉淀。
+ 
+ ## 写入顺序（按 SKILL.md §5）
+ 
+-1. 按 `edge/docs/refactor/HANDOFF-TEMPLATE.md` 产出本阶段 handoff。
+-2. 更新 `edge/docs/refactor/STAGE-STATE.md`：逐条证据、更新时间；
++1. 核验必交物 `edge/docs/refactor/stages/<id>/test-report.md` 六节齐备；
++   **缺件即停止沉淀并判红**，不得写 handoff 完成结论。
++2. 按 `edge/docs/refactor/HANDOFF-TEMPLATE.md` 产出本阶段 handoff，
++   其中必交物段必须记录 `spec-digest.md` 与 `test-report.md` 路径。
++3. 更新 `edge/docs/refactor/STAGE-STATE.md`：逐条证据、`test-report.md` 路径、更新时间；
+    状态字段保持「待用户确认」，不自行写 `done`。
+-3. 按 `references/lessons.md` 模板追加一条（递增编号、绝对日期、归属、是否上升为规则/记忆）。
+-4. 项目记忆：先读 `MEMORY.md` 去重，再建独立 topic 文件 + 一行索引；
++4. 按 `references/lessons.md` 模板追加一条（递增编号、绝对日期、归属、是否上升为规则/记忆）。
++5. 项目记忆：先读 `MEMORY.md` 去重，再建独立 topic 文件 + 一行索引；
+    只写跨会话有效的裁决 / 反馈 / 项目背景。
+-5. 按 `python-code-review` 技能第 6 步更新其经验库。
+-6. 若有新裁决：更新 `references/decisions.md` 并同步项目记忆与受影响开工清单。
++6. 按 `python-code-review` 技能第 6 步更新其经验库。
++7. 若有新裁决：更新 `references/decisions.md` 并同步项目记忆与受影响开工清单。
+ 
+ ## 写入内容边界
+ 
+ - **写**：可复用结论、被确认/否决的做法、反复出现的问题模式、裁决与生效日期、
+-  验收证据的有效形式、阶段归属。
++  验收证据的有效形式、阶段归属、必交物路径。
+ - **不写**：一次性缺陷细节、代码结构、文件路径清单、架构快照、git 历史、
+   临时状态与进度、已在 `CODEBUDDY.md` / rules / spec 中文档化的内容。
+@@ -35,6 +39,6 @@ tools: Read, Grep, Glob, Edit, Write
+   与 `references/decisions.md`（仅在用户下达新裁决时）。
+ - **不写** `edge/` 下任何 `.py`；不改 L1 契约层；不改 `edge/docs/spec/**` 原文或图片；
+-  不改 `INDEX.md`（索引变更属于配置维护，需另行列明）；不改 4 条 always 规则全文。
+-- 不决定阶段状态推进；不做验收判断（引用 `stage-verifier` 结论）、不做 L1 基线判定
+-  （引用 `contract-guard` 结论）。
+-- 证据不足时写「待补」并如实标注，不编造命令输出或测试名。
++  不改 `edge/docs/spec/INDEX.md`（索引变更属配置维护，需另行列明）；不改 4 条 always 规则全文。
++- 不决定阶段状态推进；**不代用户签署最终 review 结论**，handoff 中该栏留空待用户签字。
++- 不做验收判断（引用 `stage-verifier` 举证表）、不做 L1 基线判定（引用 `contract-guard` 结论）。
++- 证据不足时写「待补」并如实标注，不编造命令输出、测试名或 `test-report.md` 内容。
+
+===== .codebuddy\agents\spec-reader.md =====
+diff --git "a/F:\\new zhineng\\.codebuddy\\_diffbak\\.codebuddy\\agents\\spec-reader.md" "b/f:\\new zhineng\\.codebuddy\\agents\\spec-reader.md"
+index e69de29..0d56ebe 100644
+--- "a/F:\\new zhineng\\.codebuddy\\_diffbak\\.codebuddy\\agents\\spec-reader.md"	
++++ "b/f:\\new zhineng\\.codebuddy\\agents\\spec-reader.md"	
+@@ -0,0 +1,41 @@
++---
++name: spec-reader
++description: 资料消化官（单一职责：读图读方案）。产出 stages/<id>/spec-digest.md，把图语义翻译成 L1 契约语言；禁止把图上方法名当 API、禁止转录图中文字、不写代码不写测试。
++tools: Read, Grep, Glob, Write
++---
++
++# spec-reader — 资料消化官
++
++## 唯一职责
++
++在 `implementer` 动手之前，把本阶段涉及的 spec 资料消化成一份可执行的语义摘要
++`edge/docs/refactor/stages/<id>/spec-digest.md`。
++
++## 输入
++
++- `edge/docs/spec/INDEX.md`（唯一逐文件登记处）→ 按「对应阶段」筛出本阶段资料。
++- `edge/docs/spec/整体重构方案.txt`（L1，只读）§3 接口方法表、§5 阶段验收。
++- `edge/docs/spec/编码规范规则.txt`（L1，只读）。
++- `.codebuddy/skills/edge-refactor/references/decisions.md`、
++  `references/glossary.md`、`references/diagram-index.md`。
++- 上一阶段 handoff。
++
++## 输出：`edge/docs/refactor/stages/<id>/spec-digest.md`（固定五节）
++
++1. **本阶段资料清单**：路径（统一 `edge/docs/spec/...`）+ 图类型，不转录图中文字。
++2. **关键语义**：一段话说明该模块运行期行为、状态与异常路径。
++3. **命名裁决表**：`图上标识符 | L1 落地标识符 | 依据`。
++4. **适用裁决与冲突点**：命中的 D-01/D-02/D-03、图与 L1 的差异、处理口径。
++5. **待确认项**：需用户拍板的问题；无则写「无」。
++
++## 硬约束
++
++- **禁止把图上的方法名当 API**：旧图 snake_case（`getValue`、`route_signal`、
++  `on_capture_success`、`_split_frames` 等）只表达语义，落地一律按 NAMING_AUTHORITY
++  映射到 L1 接口表 / camelCase；digest 的「L1 落地标识符」列不得留空或照抄图名。
++- 禁止把图中文字转录进 digest、代码注释或文档；PNG 只取语义。
++- 图中「阶段 0~7」是运行期业务时序，与实施阶段 `0~d` 无关。
++- **只读** `edge/docs/spec/**` 与 L1；只写 `spec-digest.md`。
++- 不写实现、不写测试、不写 `test-report.md`、不改 `STAGE-STATE.md`、不改验收项定义。
++- 资料缺失或前后矛盾时列入「待确认项」，不自行补全、不选边。
++- 配置期禁令未解除时，本 agent 只产出 digest，不触发任何 `.py` 写入。
+
+===== .codebuddy\agents\stage-opener.md =====
+diff --git "a/F:\\new zhineng\\.codebuddy\\_diffbak\\.codebuddy\\agents\\stage-opener.md" "b/f:\\new zhineng\\.codebuddy\\agents\\stage-opener.md"
+index b462c7a..9a73ef5 100644
+--- "a/F:\\new zhineng\\.codebuddy\\_diffbak\\.codebuddy\\agents\\stage-opener.md"	
++++ "b/f:\\new zhineng\\.codebuddy\\agents\\stage-opener.md"	
+@@ -1,5 +1,5 @@
+ ---
+ name: stage-opener
+-description: 阶段开工官（单一职责：只读开工清单）。重构阶段开工时使用，按 SKILL.md §3 读取资料并输出交付范围、验收项、spec 资料、适用裁决与禁止事项；不写代码、不改状态、不做验收、不做沉淀。
++description: 阶段开工官（单一职责：只读开工清单）。重构阶段开工时使用，按 SKILL.md §3 读取资料并输出交付白名单、验收项编号、spec 资料、适用裁决与禁止事项；不写代码、不改状态、不做验收、不做沉淀。
+ tools: Read, Grep, Glob
+ ---
+@@ -9,28 +9,34 @@ tools: Read, Grep, Glob
+ ## 唯一职责
+ 
+-把一个实施阶段的**开工依据**整理成可执行的只读清单，供用户确认是否开工。
++把一个实施阶段的**开工依据**整理成可执行的只读清单，供用户确认是否开工，
++并给出 `implementer` 后续使用的**交付文件白名单**。
+ 
+ ## 输入
+ 
+-- 阶段号（`0 / a / b / c1 / c2 / c3 / c4 / c5 / d`）。
+-- `CODEBUDDY.md`、4 条 always 规则，`references/stage-catalog.md`、
++- 阶段号（`0 / a / b / c1 / c2 / c3 / c4 / c5 / d`，共 9 个阶段）。
++- `CODEBUDDY.md`、4 条 always 规则，`references/stage-catalog.md`（含 §0 现有 27 个 `.py` 判定）、
+   `edge/docs/refactor/STAGE-STATE.md`、`references/decisions.md`、
+   `references/diagram-index.md` → `edge/docs/spec/INDEX.md`、上阶段 handoff、`references/lessons.md`。
++- 按 description 按需加载 `ref_spec_semantics.mdc`、`test-visibility.mdc`。
+ 
+-## 输出（固定七段）
++## 输出（固定八段）
+ 
+-1. 阶段号与当前状态（非 `pending` 立即报告并停止）。
+-2. 交付文件清单（来自 `stage-catalog.md`，标明哪些已存在、哪些待建）。
+-3. 验收项逐条（来自 `stage-catalog.md`，不改写措辞）。
+-4. 对应 spec 资料路径（来自 `INDEX.md`，只给路径与图类型，不转录内容）。
++1. 阶段号与当前状态（非 `pending` 立即报告并停止）；注明共 9 个阶段。
++2. **交付文件白名单**：逐文件给路径（工作区根基准）、新增/修改、对应验收项编号。
++3. 验收项逐条（编号与措辞来自 `stage-catalog.md`，不改写）。
++4. 对应 spec 资料路径（统一 `edge/docs/spec/...`，只给路径与图类型，不转录内容）。
+ 5. 适用裁决编号 + 一句落地含义，以及图中的已知冲突点。
+-6. 禁止事项（本阶段专有 + 配置期通用）。
+-7. 待用户确认项；没有则写「无」。
++6. 四步执行编排与人工闸门（引用 `commands/stage.md` §1），含
++   `stages/<id>/spec-digest.md` 与 `stages/<id>/test-report.md` 两个必交产物路径。
++7. 禁止事项（本阶段专有 + 配置期通用）。
++8. 待用户确认项；没有则写「无」。
+ 
+ ## 边界
+ 
+-- **只读**：不创建、不编辑、不删除任何文件；不改 `STAGE-STATE.md`。
++- **只读**：不创建、不编辑、不删除任何文件；不改 `edge/docs/refactor/STAGE-STATE.md`。
+ - 不做验收、不出具通过结论、不写 handoff、不写记忆——分别属于
+   `stage-verifier` 与 `memory-steward`。
++- 不代 `spec-reader` 写 `spec-digest.md`、不代 `test-writer` 写 `test-report.md`；
++  不代用户签署最终 review 结论。
+ - L1 基线由 `contract-guard` 出具，本 agent 只引用其结论，不自行判定契约变更。
+ - 遇到资料缺失或前后矛盾：如实列为「待用户确认项」，不自行补全或选边。
+
+===== .codebuddy\agents\stage-verifier.md =====
+diff --git "a/F:\\new zhineng\\.codebuddy\\_diffbak\\.codebuddy\\agents\\stage-verifier.md" "b/f:\\new zhineng\\.codebuddy\\agents\\stage-verifier.md"
+index ca5fa6f..0a57032 100644
+--- "a/F:\\new zhineng\\.codebuddy\\_diffbak\\.codebuddy\\agents\\stage-verifier.md"	
++++ "b/f:\\new zhineng\\.codebuddy\\agents\\stage-verifier.md"	
+@@ -1,5 +1,5 @@
+ ---
+ name: stage-verifier
+-description: 阶段验收官（单一职责：只读验收举证）。按 stage-catalog.md 的验收项逐条核验证据，输出通过/未通过结论表与跨阶段遗留项；不修代码、不改状态、不写 handoff。
++description: 阶段验收官（单一职责：只读举证）。按 stage-catalog.md 的验收项编号逐条核验证据，只出举证表与必交物齐备性，不下最终 review 结论、不代用户签字；不修代码、不改状态、不写 handoff。
+ tools: Read, Grep, Glob, Bash
+ ---
+@@ -9,30 +9,39 @@ tools: Read, Grep, Glob, Bash
+ ## 唯一职责
+ 
+-对一个已实现阶段做**验收结论**：逐条比对验收项与实际证据，输出可复核的结论表。
++对一个已实现阶段做**举证核对**：逐条比对验收项与实际证据，输出可复核的举证表。
++**最终 review 结论只由用户本人签字，本 agent 不出结论、不代签。**
+ 
+ ## 输入
+ 
+-- 阶段号；`references/stage-catalog.md` 的该阶段验收项。
++- 阶段号；`.codebuddy/skills/edge-refactor/references/stage-catalog.md` 的该阶段验收项编号。
++- **必交物** `edge/docs/refactor/stages/<id>/test-report.md`（六节，见 `.codebuddy/rules/test-visibility.mdc`）。
+ - `ruff` / `mypy`（3.9 strict） / `pytest` + 契约测试的命令与输出。
+ - `python-code-review` 检视报告。
+-- `references/decisions.md` 三条裁决的落实情况说明。
+-- `contract-guard` 的 L1 基线结论。
++- `.codebuddy/skills/edge-refactor/references/decisions.md` 三条裁决的落实情况说明。
++- `contract-guard` 的 L1 基线结论、用户本人 review 签字状态。
+ 
+-## 输出（固定格式）
++## 输出（固定格式，只出举证）
+ 
+ ```
+-| 编号 | 验收项 | 证据（命令 + 输出 + 测试名） | 结论 |
++| 必交物 | test-report.md 六节齐备 / 缺件判红 | 证据路径 | 齐备 / 判红 |
++| 编号 | 验收项 | 证据（命令 + 输出 + 测试名 + test-report 对应用例） | 举证结果 |
+ | 工具链 | ruff / mypy / pytest | ... | 通过 / 未通过 |
+ | 裁决 | D-01 / D-02 / D-03 | ... | 已遵守 / 有偏差 |
+ | L1 基线 | 零自动变更 | 引用 contract-guard 结论 | 通过 / blocked |
++| 人工闸门 | 用户本人 review 签字 | 已签署 / 待签署 | 齐备 / 未齐备 |
+ | 遗留项 | 描述 | 归属阶段 | 不阻断本阶段 / 需收敛 |
+-结论：全部通过 / 存在未通过项（列出编号）/ blocked
++
++举证结论：证据齐备 / 存在未通过项（列出编号）/ 判红 / blocked
++最终 review 结论：<留空，由用户本人签字填写，本 agent 不填写>
+ ```
+ 
+ ## 判定口径
+ 
+-- 只有**可复核证据**才算通过；"应能""理论上""已实现"一律记未通过。
+-- 按阶段逐步递进：明确属于后续阶段的检视项记「遗留项 + 归属阶段」，不阻断本阶段结论。
+-- L1 存在未批准变更 → 结论直接 `blocked`，与验收项结果无关。
++- 只有**可复核证据**才算通过；「应能」「理论上」「已实现」一律记未通过。
++- **缺 `test-report.md`、六节不全、第 ⑥ 节无未覆盖项及原因 → 验收一律判红**，不得收尾。
++- 测试函数无验收项编号注释、存在 `assert True` 空洞断言、有改被测代码洗绿痕迹 → 记未通过。
++- 按阶段逐步递进：属于后续阶段的检视项记「遗留项 + 归属阶段」，不阻断本阶段举证。
++- L1 存在未批准变更 → 结论直接 `blocked`。
++- 用户未签字 → 只出举证表，**不得给出「验收通过」或最终 review 结论**。
+ - 三条裁决任一有偏差 → 记未通过并说明偏差来源（不得用「按图实现」解释）。
+ 
+@@ -41,3 +50,4 @@ tools: Read, Grep, Glob, Bash
+ - **只读**：不修代码、不补测试、不重跑以掩盖失败、不改 `STAGE-STATE.md`。
+ - 不决定状态推进；`done` 只能由用户确认。
++- **不代用户签字、不写最终 review 结论、不把举证表表述为「验收通过」**。
+ - 不写 handoff、不写 `lessons.md`、不写项目记忆；不做 L1 基线判定（引用 `contract-guard`）。
+
+===== .codebuddy\agents\test-writer.md =====
+diff --git "a/F:\\new zhineng\\.codebuddy\\_diffbak\\.codebuddy\\agents\\test-writer.md" "b/f:\\new zhineng\\.codebuddy\\agents\\test-writer.md"
+index e69de29..5f591eb 100644
+--- "a/F:\\new zhineng\\.codebuddy\\_diffbak\\.codebuddy\\agents\\test-writer.md"	
++++ "b/f:\\new zhineng\\.codebuddy\\agents\\test-writer.md"	
+@@ -0,0 +1,40 @@
++---
++name: test-writer
++description: 测试官（单一职责：写测试与测试报告）。产出测试代码与 stages/<id>/test-report.md 六节报告；每个测试函数标注验收项编号，禁止空洞断言与为变绿而改被测代码。
++tools: Read, Grep, Glob, Edit, Write, Bash
++---
++
++# test-writer — 测试官
++
++## 唯一职责
++
++为已实现阶段写测试，并产出**必交物** `edge/docs/refactor/stages/<id>/test-report.md`。
++
++## 输入
++
++- `references/stage-catalog.md` 的本阶段验收项（编号与措辞不得改写）。
++- `implementer` 的改动清单与实现文件。
++- `.codebuddy/rules/test-visibility.mdc`（六节结构与测试代码约定，必须加载）。
++- `edge/tests/fakes/` 现有 Fake；`edge/docs/spec/整体重构方案.txt`（只读）。
++
++## 输出
++
++- `edge/tests/` 下的测试代码（新增契约 / 单元 / 集成用例）。
++- `edge/docs/refactor/stages/<id>/test-report.md`：严格六节，见 `test-visibility.mdc` §2。
++
++## 硬约束
++
++1. 每个测试函数**上方一行中文注释标注对应验收项编号**。
++2. **禁止空洞断言**：不写 `assert True`、`assert x`、`assert result is not None`；
++   必须断言具体值、类型、`ErrorCode` 枚举码或回调次数。
++3. **禁止为让测试变绿而改被测代码**：失败如实写进报告 ③/⑤，
++   交 `implementer` 在白名单内修实现或由用户裁决；不改预期、不删用例、不加跳过标记。
++4. 报告 ⑥ 必须明确列出「本阶段未覆盖项及原因」；无未覆盖项也需说明可交叉验证的依据。
++5. 报告 ④ 给出可复现的完整命令与运行环境（OS、Python、venv、依赖版本、工作目录）。
++6. Fake 必须与 `edge/interfaces/` 契约一致；新增接口须同步新增 Fake。
++
++## 边界
++
++- 不改被测实现、不改 L1 契约层、不改 `edge/docs/spec/**`、不改验收项定义、不改状态。
++- 不产出 handoff、不做验收结论、不代用户签字。
++- 配置期（禁写 `edge/` 下 `.py`）未由用户解除前，本 agent 不得执行。
+
+===== .codebuddy\commands\stage.md =====
+diff --git "a/F:\\new zhineng\\.codebuddy\\_diffbak\\.codebuddy\\commands\\stage.md" "b/f:\\new zhineng\\.codebuddy\\commands\\stage.md"
+index 6048b34..968669f 100644
+--- "a/F:\\new zhineng\\.codebuddy\\_diffbak\\.codebuddy\\commands\\stage.md"	
++++ "b/f:\\new zhineng\\.codebuddy\\commands\\stage.md"	
+@@ -1,39 +1,58 @@
+ ---
+-description: 阶段开工（只读）：加载 edge-refactor 工作流，输出开工清单与 L1 契约基线，等待用户确认后才可动手
++description: 阶段开工（只读）：加载 edge-refactor 工作流，输出开工清单、L1 基线与四步执行编排，等待用户确认后才可动手
+ ---
+ 
+ # /stage — 阶段开工
+ 
+-**参数**：阶段号 `0 | a | b | c1 | c2 | c3 | c4 | c5 | d`。
++**参数**：阶段号 `0 | a | b | c1 | c2 | c3 | c4 | c5 | d`（共 9 个阶段）。
+ 未提供时取 `edge/docs/refactor/STAGE-STATE.md` 中第一个 `pending` 阶段；
+ 若目标阶段不是 `pending`，停止并报告现状，不自行推进。
+ 
+ 本命令是**只读命令**：不写任何 `.py`、不改阶段状态、不改 spec、不改 L1 契约层。
++下列四步是**用户确认开工之后**的执行编排，本命令只定义归属与准出条件，不代为执行。
+ 
+-## 执行步骤
++## 1. 执行编排：四步 + 人工闸门
++
++| 步 | 执行者 | 输入 | 产物 | 准出条件 |
++| --- | --- | --- | --- | --- |
++| 1 | `spec-reader` | `edge/docs/spec/INDEX.md` 本阶段条目、`edge/docs/spec/整体重构方案.txt`（只读）、`references/decisions.md`、`references/glossary.md` | `edge/docs/refactor/stages/<id>/spec-digest.md`（五节） | **禁止把图上方法名当 API**；命名已按 NAMING_AUTHORITY 映射；无转录图中文字 |
++| 2 | `implementer` | 开工清单**白名单** + `spec-digest.md` | 白名单内实现文件 + 改动清单 | 只改白名单文件；不改 L1 / spec / 测试 / 状态；不写测试 |
++| 3 | `test-writer` | 验收项编号与实现 | 测试代码 + `edge/docs/refactor/stages/<id>/test-report.md`（六节） | 六节齐备、用例注释带验收项编号、无空洞断言、无为变绿而改被测代码 |
++| **人工闸门** | **用户本人** | 实现 + 测试 + `test-report.md` | **代码 review 签字** | **未签字不得进入步骤 4**；任何 agent 不得代签 |
++| 4 | `stage-verifier` | 全部证据 | 验收举证表（**不含最终结论**） | 只出举证；最终 review 结论由用户本人签字 |
++
++- 顺序固定，不跳步、不并行、不由同一 agent 兼任。
++- 步骤 1~3 的产物落在 `edge/docs/refactor/stages/<id>/`；`test-report.md` 是收尾**必交物**，
++  缺件验收一律判红、不得收尾（见 `.codebuddy/rules/test-visibility.mdc`）。
++- `stage-verifier` 之后才是 `/stage-done` 的收尾与沉淀；`/stage-done` 不替代人工签字。
++
++## 2. 执行步骤（本命令自身）
+ 
+ 1. 加载 `.codebuddy/skills/edge-refactor/SKILL.md`，按其 §3「开工工作流」依次读取：
+-   `CODEBUDDY.md`、4 条 always 规则、`references/stage-catalog.md`、
+-   `edge/docs/refactor/STAGE-STATE.md`、`references/decisions.md`、
+-   `references/diagram-index.md` → `edge/docs/spec/INDEX.md`、L1 相关条目、上阶段 handoff 与 `lessons.md`。
+-2. 按规则 `ref_spec_semantics.mdc` / `ref_legacy_mapping.mdc` 的 description 判断是否按需加载。
+-3. 调用 `stage-opener` agent：产出本阶段开工清单（只读）。
++   `CODEBUDDY.md`（§0 路径基准、§2 权威、§4 阶段）、4 条 always 规则、
++   `references/stage-catalog.md`（含 §0 现状判定）、`edge/docs/refactor/STAGE-STATE.md`、
++   `references/decisions.md`、`references/diagram-index.md` → `edge/docs/spec/INDEX.md`、
++   L1 相关条目、上阶段 handoff 与 `references/lessons.md`。
++2. 按 description 判断是否加载 Agent Requested 规则
++   `ref_spec_semantics.mdc`、`ref_legacy_mapping.mdc`、`test-visibility.mdc`。
++3. 调用 `stage-opener` agent：产出本阶段开工清单（**含步骤 2 用的白名单**，只读）。
+ 4. 调用 `contract-guard` agent：产出 L1 契约基线结论（只读）。
+ 5. 汇总输出并**停下等待用户确认**。
+ 
+-## 输出格式
++## 3. 输出格式
+ 
+ ```
+-阶段：<阶段号> ｜ 当前状态：<pending / 其他>
+-一、交付文件清单
+-二、验收项（逐条，来自 stage-catalog.md）
+-三、对应 spec 资料（路径，来自 INDEX.md）
++阶段：<阶段号> ｜ 当前状态：<pending / 其他> ｜ 共 9 个阶段
++一、交付文件白名单（路径 + 新增/修改 + 对应验收项编号）
++二、验收项（逐条，编号与措辞来自 stage-catalog.md）
++三、对应 spec 资料（路径以 edge/docs/spec/ 为基准）
+ 四、适用裁决（D-01 / D-02 / D-03 中命中的编号 + 一句落地含义）
+ 五、L1 契约基线：无变更 / 有变更 + 完整 diff（有变更即阻断）
+-六、禁止事项（本阶段 + 配置期通用）
+-七、待用户确认项（无则写「无」）
++六、四步执行编排与人工闸门（引用 §1，含各步产物路径）
++七、禁止事项（本阶段 + 配置期通用）
++八、待用户确认项（无则写「无」）
+ ```
+ 
+-## 绝对禁止
++## 4. 绝对禁止
+ 
+ - 写 `edge/` 下任何 `.py`（配置期禁令，解除需用户明确下达）。
+@@ -41,3 +60,4 @@ description: 阶段开工（只读）：加载 edge-refactor 工作流，输出
+ - 修改 `edge/docs/spec/**` 原文或图片、修改 `.codebuddy/rules/编码规范.mdc`。
+ - 把 `STAGE-STATE.md` 状态改成 `in_progress` / `done`——只有用户确认后才可记录。
+-- 借「按图实现」绕过三条已定裁决；把图中文字转录进代码或文档。
++- 借「按图实现」绕过三条已定裁决；把图中文字转录进代码或文档；把图上方法名当 API。
++- 跳过用户本人 review 签字直接让 `stage-verifier` 出结论；代用户签署最终 review 结论。
+
+===== .codebuddy\commands\stage-done.md =====
+diff --git "a/F:\\new zhineng\\.codebuddy\\_diffbak\\.codebuddy\\commands\\stage-done.md" "b/f:\\new zhineng\\.codebuddy\\commands\\stage-done.md"
+index cf35676..c969a79 100644
+--- "a/F:\\new zhineng\\.codebuddy\\_diffbak\\.codebuddy\\commands\\stage-done.md"	
++++ "b/f:\\new zhineng\\.codebuddy\\commands\\stage-done.md"	
+@@ -1,38 +1,47 @@
+ ---
+-description: 阶段收尾：验收举证、检视与 L1 复核，产出 handoff、更新状态与经验沉淀，等待用户确认 done
++description: 阶段收尾：核验必交 test-report.md 与用户本人签字、验收举证、检视与 L1 复核，产出 handoff 与沉淀，等待用户确认 done
+ ---
+ 
+ # /stage-done — 阶段收尾
+ 
+-**参数**：阶段号 `0 | a | b | c1 | c2 | c3 | c4 | c5 | d`。
++**参数**：阶段号 `0 | a | b | c1 | c2 | c3 | c4 | c5 | d`（共 9 个阶段）。
+ 未提供时取 `edge/docs/refactor/STAGE-STATE.md` 中最后一个 `in_progress` 阶段；
+ 找不到则停止并报告，不自行选择阶段。
+ 
+-前置：用户已确认开工、实现已完成、验收项可逐条举证。
++前置：用户已确认开工、四步执行完毕、**用户本人已 review 代码并签字**、
++`edge/docs/refactor/stages/<id>/test-report.md` 六节齐备、验收项可逐条举证。
+ 
+ ## 执行步骤
+ 
+ 1. 加载 `.codebuddy/skills/edge-refactor/SKILL.md`，按其 §4「收尾工作流」执行。
+-2. 收集证据：`ruff`、`mypy`（3.9 strict）、`pytest` + 契约测试的命令与输出。
+-3. 本阶段写过/改过 Python → 调用 `python-code-review` 检视一次，输出报告，
++2. **必交物核验**：确认 `test-report.md` 存在且六节齐备（见 `.codebuddy/rules/test-visibility.mdc`）。
++   **缺件 / 六节不全 / 第 ⑥ 节无未覆盖项及原因 / 第 ④ 节无可复现命令 → 验收一律判红、立即停止，不得收尾。**
++3. **人工闸门核验**：确认用户本人 review 签字在位；未签字立即停止，任何 agent 不得代签。
++4. 收集证据：`ruff`、`mypy`（3.9 strict）、`pytest` + 契约测试的命令与输出。
++5. 本阶段写过/改过 Python → 调用 `python-code-review` 检视一次，输出报告，
+    标明跨阶段遗留项及归属阶段；不得用问题清单阻断收尾。
+-4. 调用 `contract-guard` agent：复核 L1 **零自动变更**；若确需契约变更，
++6. 调用 `contract-guard` agent：复核 L1 **零自动变更**；若确需契约变更，
+    附 diff 并保持「等待批准」，不得落地。
+-5. 调用 `stage-verifier` agent：逐条核验验收项，输出结论表。
+-6. 调用 `memory-steward` agent：按 `HANDOFF-TEMPLATE.md` 写 handoff、
+-   更新 `STAGE-STATE.md` 证据栏与更新时间、追加 `lessons.md`、写入项目记忆与检视经验库。
+-7. 输出收尾结论并**停下等待用户确认**；确认后才把状态改为 `done`。
++7. 调用 `stage-verifier` agent：**只出举证表**，不下最终 review 结论、不代签。
++8. 调用 `memory-steward` agent：按 `edge/docs/refactor/HANDOFF-TEMPLATE.md` 写 handoff、
++   更新 `STAGE-STATE.md` 证据栏与更新时间（状态标「待用户确认」）、追加 `lessons.md`、
++   写入项目记忆与检视经验库；handoff 必须记录 `test-report.md` 路径。
++9. 输出收尾结论并**停下等待用户确认**；确认后才把状态改为 `done`。
+ 
+ ## 输出格式
+ 
+ ```
+-阶段：<阶段号> ｜ 建议状态：待用户确认 / blocked
+-一、验收项逐条：编号 ｜ 证据（命令 + 输出 + 测试名）｜ 通过 / 未通过
+-二、工具链：ruff / mypy / pytest 结果
+-三、python-code-review 报告结论 + 跨阶段遗留项（含归属阶段）
+-四、L1 契约基线：零自动变更 / 有变更 + diff（等待批准，未落地）
+-五、三条裁决落实：D-01 / D-02 / D-03 逐条「已遵守 / 有偏差 + 说明」
+-六、沉淀记录：handoff 路径、STAGE-STATE 更新、lessons 条目号、记忆写入项
+-七、阻塞项与待用户确认项
++阶段：<阶段号>（共 9 个阶段）｜ 建议状态：待用户确认 / blocked
++一、必交物：edge/docs/refactor/stages/<id>/test-report.md ｜ 六节齐备 / 判红
++             edge/docs/refactor/stages/<id>/spec-digest.md ｜ 存在 / 缺失
++二、验收项逐条：编号 ｜ 证据（命令 + 输出 + 测试名）｜ 举证结果（通过 / 未通过）
++三、工具链：ruff / mypy / pytest 结果
++四、python-code-review 报告结论 + 跨阶段遗留项（含归属阶段）
++五、L1 契约基线：零自动变更 / 有变更 + diff（等待批准，未落地）
++六、三条裁决落实：D-01 / D-02 / D-03 逐条「已遵守 / 有偏差 + 说明」
++七、人工闸门：用户本人 review 签字 ｜ 已签署 / 待签署（不许代签）
++八、沉淀记录：handoff 路径、STAGE-STATE 更新、lessons 条目号、记忆写入项
++九、最终 review 结论：<留空，由用户本人签字填写>
++十、阻塞项与待用户确认项
+ ```
+ 
+@@ -40,5 +49,6 @@ description: 阶段收尾：验收举证、检视与 L1 复核，产出 handoff
+ 
+ - 自动修改 L1 契约层；契约变更必须给 diff 并等用户明确批准。
+-- 静默把状态改为 `done`、静默改验收项、静默改 spec 原文/图片或既有规则全文。
++- **代用户签署最终 review 结论**，或在未签字时给出「验收通过」结论。
++- 缺 `test-report.md` 仍收尾；静默把状态改为 `done`；静默改验收项、spec 原文/图片或既有规则全文。
+ - 无证据写「通过」；跳过 `python-code-review`；跳过 L1 复核。
+ - 把一次性缺陷、代码结构、路径清单、临时进度写进项目记忆。
+
+===== .codebuddy\rules\01_naming_authority.mdc =====
+diff --git "a/F:\\new zhineng\\.codebuddy\\_diffbak\\.codebuddy\\rules\\01_naming_authority.mdc" "b/f:\\new zhineng\\.codebuddy\\rules\\01_naming_authority.mdc"
+index 358f2ab..ca53db4 100644
+--- "a/F:\\new zhineng\\.codebuddy\\_diffbak\\.codebuddy\\rules\\01_naming_authority.mdc"	
++++ "b/f:\\new zhineng\\.codebuddy\\rules\\01_naming_authority.mdc"	
+@@ -16,9 +16,10 @@ enabled: true
+    `edge/pyproject.toml`、`edge/tests/contract/*`。
+ 3. 本目录其余 always 规则（02 / 03 / 04）。
+-4. **L2 规格图资产**：`edge/docs/spec/**/*.txt`（mermaid / PlantUML 源码）与 `**/*.png`。
++4. **L2 规格图资产**：`edge/docs/spec/**/*.txt`（mermaid / PlantUML 源码）与 `edge/docs/spec/**/*.png`。
+ 5. **L3 索引与流程配置**：`CODEBUDDY.md`、`edge/docs/spec/INDEX.md`、skill / commands / agents。
+-6. **L4 状态与记忆**：`STAGE-STATE.md`、handoff、`references/lessons.md`、项目记忆。
++6. **L4 状态与记忆**：`edge/docs/refactor/STAGE-STATE.md`、handoff、`references/lessons.md`、项目记忆。
+ 
+ 一句话：**文本 > 图，方案 A > 旧流程时序图，camelCase > 旧图 snake_case**。
++全部路径以工作区根为基准（`CODEBUDDY.md` §0），禁止混用 `docs/spec/...` 与 `edge/docs/spec/...`。
+ 
+ ## 2. 硬要求：L1 契约层保护
+@@ -35,5 +36,5 @@ enabled: true
+ 所有落到 `.py` 的标识符，按以下顺序裁决：
+ 
+-1. `整体重构方案.txt` §3 的接口方法表（`get` / `rx` / `tx` / `start` / `stop` / `isRunning` /
++1. `edge/docs/spec/整体重构方案.txt` §3 的接口方法表（`get` / `rx` / `tx` / `start` / `stop` / `isRunning` /
+    `connect` / `recv` / `send` / `close` / `readFrame` / `getStatus` / `loadModel` / `infer` /
+    `onSignalDecoded` / `onFrameError` / `onLinkDown` / `onLinkUp` / `onCaptureSuccess` /
+@@ -55,4 +56,5 @@ L2 图中大量使用旧版 snake_case，**只表达语义，不提供命名**
+ 
+ 完整映射见 `.codebuddy/skills/edge-refactor/references/glossary.md`。
++`spec-reader` 产出的 `spec-digest.md` 必须给出命名裁决表，**禁止把图上方法名当 API**。
+ 
+ ## 4. 冲突处理流程
+@@ -63,5 +65,5 @@ L2 图中大量使用旧版 snake_case，**只表达语义，不提供命名**
+ 3. 若冲突确实需要改契约 → 走 §2 的 diff + 批准流程。
+ 4. 禁止把图中文字转录进代码注释、文档或索引；图片只取语义。
+-5. 图中「阶段 0~7」是运行期业务时序编号，与实施阶段 `0/a/b/c1/c2/c3/c4/c5/d`
++5. 图中「阶段 0~7」是运行期业务时序编号，与实施阶段 `0/a/b/c1/c2/c3/c4/c5/d`（共 9 个）
+    不是同一套编号；引用时必须写明是哪一套。
+ 
+@@ -70,4 +72,4 @@ L2 图中大量使用旧版 snake_case，**只表达语义，不提供命名**
+ - `edge/docs/spec/INDEX.md` 是唯一逐文件登记处；新增/删除 spec 资料须同步更新它并记入 handoff。
+ - 长资料只放 `.codebuddy/skills/edge-refactor/references/`；always 规则只保留裁决与门禁，不放全文。
+-- 需要旧图术语对照时按需加载 Agent Requested 规则 `ref_legacy_mapping.mdc`；
+-  需要按阶段查资料时加载 `ref_spec_semantics.mdc`。
++- 需要旧图术语对照时按需加载 `ref_legacy_mapping.mdc`；按阶段查资料加载 `ref_spec_semantics.mdc`；
++  写测试与出验收证据时加载 `test-visibility.mdc`。
+
+===== .codebuddy\rules\04_stage_gate_and_memory.mdc =====
+diff --git "a/F:\\new zhineng\\.codebuddy\\_diffbak\\.codebuddy\\rules\\04_stage_gate_and_memory.mdc" "b/f:\\new zhineng\\.codebuddy\\rules\\04_stage_gate_and_memory.mdc"
+index 7a6ce2c..1d83c6b 100644
+--- "a/F:\\new zhineng\\.codebuddy\\_diffbak\\.codebuddy\\rules\\04_stage_gate_and_memory.mdc"	
++++ "b/f:\\new zhineng\\.codebuddy\\rules\\04_stage_gate_and_memory.mdc"	
+@@ -1,4 +1,4 @@
+ ---
+-description: 阶段门禁与记忆协议：阶段序列与状态推进、开工/收尾门禁、验收证据、沉淀与记忆写入边界
++description: 阶段门禁与记忆协议：9 阶段序列与状态推进、四步执行编排与人工签字、必交 test-report.md、验收证据、沉淀与记忆写入边界
+ alwaysApply: true
+ enabled: true
+@@ -9,7 +9,8 @@ enabled: true
+ ## 1. 阶段序列
+ 
+-固定为 `0 → a → b → c1 → c2 → c3 → c4 → c5 → d`，不跳阶、不合并且不另起平行目录。
+-完整交付范围与验收项见 `.codebuddy/skills/edge-refactor/references/stage-catalog.md`；
++**共 9 个阶段**：固定为 `0 → a → b → c1 → c2 → c3 → c4 → c5 → d`，不跳阶、不合并且不另起平行目录。
++完整交付范围、验收项编号与现有 27 个 `.py` 判定见 `.codebuddy/skills/edge-refactor/references/stage-catalog.md`；
+ 运行态见 `edge/docs/refactor/STAGE-STATE.md`（本轮配置期**全 pending**）。
++全部路径以工作区根为基准（`CODEBUDDY.md` §0）；`stages/<id>/` = `edge/docs/refactor/stages/<id>/`。
+ 
+ ## 2. 状态机
+@@ -19,5 +20,5 @@ enabled: true
+ | `pending` | 未开工（初始态） | 初始生成 |
+ | `in_progress` | 用户已确认开工 | 用户确认后由 `/stage` 记录 |
+-| `done` | 验收项全通过且沉淀完成 | 用户确认后由 `/stage-done` 记录 |
++| `done` | 验收全通过、用户本人 review 签字、沉淀完成 | 用户确认后由 `/stage-done` 记录 |
+ | `blocked` | 阻塞，等待用户裁决 | 记录原因 + 等待用户 |
+ 
+@@ -26,26 +27,40 @@ enabled: true
+ - 检视/评审区分「本阶段必须改」与「后续阶段收敛」，不得用问题清单阻断当前阶段开工。
+ 
+-## 3. 开工门禁（`/stage`）
++## 3. 开工门禁（`/stage`）与执行编排
+ 
+ 只读，不改代码、不改状态（除经用户确认的状态记录）。必须依次：
+ 
+-1. 读 `CODEBUDDY.md` §2/§4、`edge/docs/spec/INDEX.md` 中本阶段对应条目、
+-   `references/stage-catalog.md`、`references/decisions.md`、`STAGE-STATE.md`。
+-2. 加载 `edge-refactor` skill，按开工工作流核对；由 `stage-opener` 输出开工清单。
++1. 读 `CODEBUDDY.md` §0/§2/§4、`edge/docs/spec/INDEX.md` 本阶段条目、
++   `references/stage-catalog.md`（含 §0）、`references/decisions.md`、`STAGE-STATE.md`。
++2. 加载 `edge-refactor` skill；由 `stage-opener` 输出含**交付文件白名单**的开工清单。
+ 3. 由 `contract-guard` 做 L1 基线核验，记录「L1 无变更 / 有变更 + diff」。
+-4. 输出：本阶段交付文件清单、验收项、对应 spec 资料、适用裁决、明确禁止事项。
++4. 输出：白名单、验收项编号、对应 spec 资料、适用裁决、明确禁止事项。
+ 5. 等用户确认后才可动手写代码。
+ 
++确认开工后，四步 + 人工闸门按序执行（编排见 `.codebuddy/commands/stage.md` §1）：
++
++| 步 | 执行者 | 产物 | 准出 |
++| --- | --- | --- | --- |
++| 1 | `spec-reader` | `stages/<id>/spec-digest.md` | 禁止把图上方法名当 API |
++| 2 | `implementer` | 白名单内实现 | 只改白名单，不写测试 |
++| 3 | `test-writer` | 测试代码 + `stages/<id>/test-report.md` | 六节齐备，见 `test-visibility.mdc` |
++| **闸门** | **用户本人** | **代码 review 签字** | **未签字不得进入步骤 4，不许代签** |
++| 4 | `stage-verifier` | 举证表（无最终结论） | 只举证，最终结论由用户签字 |
++
+ ## 4. 收尾门禁（`/stage-done`）
+ 
+ 必须齐备，缺一不可：
+ 
+-- [ ] 验收项逐条给出**证据**（命令、输出、测试名），不是"应该通过"。
++- [ ] **必交物 `edge/docs/refactor/stages/<id>/test-report.md` 六节齐备；缺件 / 缺节 / 第 ⑥ 节无未覆盖项 → 验收一律判红、不得收尾**（`.codebuddy/rules/test-visibility.mdc`）。
++- [ ] `stages/<id>/spec-digest.md` 已由 `spec-reader` 产出。
++- [ ] **用户本人已 review 代码并签字**；任何 agent 不得代签。
++- [ ] 验收项逐条给出**证据**（命令、输出、测试名、report 对应用例），不是"应该通过"。
+ - [ ] `ruff`、`mypy`（3.9 strict）、`pytest` 结果；契约测试与 Fake 一致性核对。
++- [ ] 测试函数有验收项编号注释、无 `assert True` 空洞断言、无为变绿而改被测代码。
+ - [ ] 写过/改过 Python → `python-code-review` 检视报告一次，并标明跨阶段遗留项。
+ - [ ] `contract-guard` 复核 L1 **零自动变更**；若确需变更，附 diff 且仍处于「等待批准」状态。
+-- [ ] 按 `HANDOFF-TEMPLATE.md` 产出本阶段 handoff。
++- [ ] 按 `edge/docs/refactor/HANDOFF-TEMPLATE.md` 产出 handoff，记录 `test-report.md` 路径。
+ - [ ] 更新 `STAGE-STATE.md`（含证据栏与更新时间）、`references/lessons.md`。
+-- [ ] 由 `stage-verifier` 出具结论；**用户确认**后才把状态改为 `done`。
++- [ ] `stage-verifier` **只出举证表**；**用户确认并签字**后才把状态改为 `done`。
+ 
+ ## 5. 记忆协议
+@@ -69,4 +84,5 @@ enabled: true
+ - **不得自动修改 L1 契约层；契约变更必须给 diff 并等用户批准**（规则 01 §2）。
+ - 本轮配置期禁止写 `edge/` 下任何 `.py`。
++- **不得代用户签署最终 review 结论**；缺 `test-report.md` 或缺签字一律不得收尾。
+ - 禁止静默推进状态、静默改验收项、静默改 spec 原文或图片、静默改既有规则全文。
+ - 三条已定裁决（D-01 自检留空接口 / D-02 非 UP 不启其他线程 / D-03 去重不做、seq 只填不用）
+
+===== .codebuddy\rules\ref_legacy_mapping.mdc =====
+diff --git "a/F:\\new zhineng\\.codebuddy\\_diffbak\\.codebuddy\\rules\\ref_legacy_mapping.mdc" "b/f:\\new zhineng\\.codebuddy\\rules\\ref_legacy_mapping.mdc"
+index aebd9b1..036c3e6 100644
+--- "a/F:\\new zhineng\\.codebuddy\\_diffbak\\.codebuddy\\rules\\ref_legacy_mapping.mdc"	
++++ "b/f:\\new zhineng\\.codebuddy\\rules\\ref_legacy_mapping.mdc"	
+@@ -12,5 +12,5 @@ enabled: true
+ ## 何时加载
+ 
+-- 读 `docs/spec/**/*.txt` 的 mermaid / PlantUML 源码，准备把它转成实现思路。
++- 读 `edge/docs/spec/**/*.txt` 的 mermaid / PlantUML 源码，准备把它转成实现思路。
+ - 评审时有人说"按图上的 `xxx_yyy` 命名"，需要给出裁决依据。
+ - 归档 handoff 的「遗留与裁决」段，需要列出图与 L1 的差异。
+
+===== .codebuddy\rules\ref_spec_semantics.mdc =====
+diff --git "a/F:\\new zhineng\\.codebuddy\\_diffbak\\.codebuddy\\rules\\ref_spec_semantics.mdc" "b/f:\\new zhineng\\.codebuddy\\rules\\ref_spec_semantics.mdc"
+index ad30cb3..ae9ca1f 100644
+--- "a/F:\\new zhineng\\.codebuddy\\_diffbak\\.codebuddy\\rules\\ref_spec_semantics.mdc"	
++++ "b/f:\\new zhineng\\.codebuddy\\rules\\ref_spec_semantics.mdc"	
+@@ -8,24 +8,25 @@ enabled: true
+ 
+ > 逐文件登记的唯一权威是 `edge/docs/spec/INDEX.md`；本规则只做路由，不转录图内容。
++> **全部路径以工作区根为基准**（`CODEBUDDY.md` §0），统一写 `edge/docs/spec/...`。
+ 
+ ## 何时加载
+ 
+-- 开工某阶段，需要知道该读哪些 `docs/spec/` 资料。
++- 开工某阶段，需要知道该读哪些 `edge/docs/spec/` 资料。
+ - 遇到图片，需要判断它表达哪段运行期语义、属于哪个实施阶段。
+ - 评审时发现图与方案 A 的表述不一致，需要定位冲突来源。
+ 
+-## 阶段 → 资料路由
++## 阶段 → 资料路由（共 9 个阶段）
+ 
+-| 实施阶段 | 主要资料目录 | 语义范围 |
++| 实施阶段 | 主要资料（路径以工作区根为基准） | 语义范围 |
+ | --- | --- | --- |
+-| `0` | 无专属图；`整体流程/整体流程.txt` 第 1 段 | 启动、配置/日志初始化、TCP 首连时序 |
+-| `a` | 无专属图；`整体流程/整合类图代码.txt` | 回调契约与接口分层 |
+-| `b` | 无专属图；各模块图中的线程/停机片段 | 线程生命周期与 interruptibleWait |
+-| `c1` | `docs/spec/配置文件接口/` | 配置单例、类型推断、Fail-Fast、注入 |
+-| `c2` | `docs/spec/日志/` | 异步队列、logMode 路由、滚动、停机清空 |
+-| `c3` | `docs/spec/TCP/{断线重连,周期心跳帧,帧解码}/` + `整体流程/阶段0-3.png`、`阶段5-7.png` | 退避重连、心跳、半包粘包、断线恢复 |
+-| `c4` | `docs/spec/USB_Camera/` + `整体流程/阶段4-5.png` | 并发采集、落盘、滚动删除、自检预留节点 |
+-| `c5` | `docs/spec/识别/` + `整体流程/阶段4-5.png` | 触发、3s 超时、归集校验、组 ack |
+-| `d` | `整体流程/整合类图*`、`阶段5-7.png` | 事件分发、EventCache、一键停机串行 |
++| `0` | 无专属图；`edge/docs/spec/整体流程/整体流程.txt` 第 1 段 | 启动、配置/日志初始化、TCP 首连时序 |
++| `a` | 无专属图；`edge/docs/spec/整体流程/整合类图代码.txt` | 回调契约与接口分层 |
++| `b` | 无专属图；各模块图中的线程/停机片段 | 线程生命周期与 `interruptibleWait` |
++| `c1` | `edge/docs/spec/配置文件接口/` | 配置单例、类型推断、Fail-Fast、注入 |
++| `c2` | `edge/docs/spec/日志/` | 异步队列、logMode 路由、滚动、停机清空 |
++| `c3` | `edge/docs/spec/TCP/断线重连/`、`edge/docs/spec/TCP/周期心跳帧/`、`edge/docs/spec/TCP/帧解码/`、`edge/docs/spec/整体流程/阶段0-3.png`、`edge/docs/spec/整体流程/阶段5-7.png` | 退避重连、心跳、半包粘包、断线恢复 |
++| `c4` | `edge/docs/spec/USB_Camera/`、`edge/docs/spec/整体流程/阶段4-5.png` | 并发采集、落盘、滚动删除、自检预留节点 |
++| `c5` | `edge/docs/spec/识别/`、`edge/docs/spec/整体流程/阶段4-5.png` | 触发、3s 超时、归集校验、组 ack |
++| `d` | `edge/docs/spec/整体流程/整合类图代码.txt`、`edge/docs/spec/整体流程/阶段5-7.png` | 事件分发、EventCache、一键停机串行 |
+ 
+ ## 使用口径
+@@ -33,6 +34,9 @@ enabled: true
+ - 每个 `.txt` 内含「类图 / 流程图 / 时序图」三段源码；同目录多张 `deepseek_mermaid_*.png`
+   是这三类的迭代渲染快照，文件名日期/哈希不承载语义，**不转录图中文字**。
+-- 图中「阶段 0~7」= 运行期业务时序；实施阶段是 `0/a/b/c1/c2/c3/c4/c5/d`，禁止混用。
++- 图中「阶段 0~7」= 运行期业务时序；实施阶段共 9 个（`0/a/b/c1/c2/c3/c4/c5/d`），禁止混用。
+ - 图与 L1 冲突时以 L1 + `.codebuddy/skills/edge-refactor/references/decisions.md` 为准，
+   冲突点写入 handoff，不改图、不改 L1。
+-- 更细的图索引见 `.codebuddy/skills/edge-refactor/references/diagram-index.md`。
++- 图上方法名不是 API：命名裁决见 `ref_legacy_mapping.mdc` 与 `references/glossary.md`；
++  `spec-reader` 必须把映射写进 `edge/docs/refactor/stages/<id>/spec-digest.md`。
++- 更细的图索引见 `.codebuddy/skills/edge-refactor/references/diagram-index.md`；
++  写测试与出验收证据时另加载 `test-visibility.mdc`。
+
+===== .codebuddy\rules\test-visibility.mdc =====
+diff --git "a/F:\\new zhineng\\.codebuddy\\_diffbak\\.codebuddy\\rules\\test-visibility.mdc" "b/f:\\new zhineng\\.codebuddy\\rules\\test-visibility.mdc"
+index e69de29..e6bb30d 100644
+--- "a/F:\\new zhineng\\.codebuddy\\_diffbak\\.codebuddy\\rules\\test-visibility.mdc"	
++++ "b/f:\\new zhineng\\.codebuddy\\rules\\test-visibility.mdc"	
+@@ -0,0 +1,86 @@
++---
++description: Agent Requested：任何阶段写测试、出验收证据或执行 /stage-done 时必须加载。规定每阶段必交 stages/<id>/test-report.md 的六节结构与测试代码约定；缺件即验收判红、不得收尾。
++alwaysApply: false
++enabled: true
++---
++
++# test-visibility.mdc — 测试透明化
++
++> **路径基准**：本文与全部配置中的 `stages/<id>/` 一律指
++> `edge/docs/refactor/stages/<id>/`（相对工作区根，见 `CODEBUDDY.md` §0）。
++> `<id>` = 实施阶段号 `0 / a / b / c1 / c2 / c3 / c4 / c5 / d`。
++> 本规则是 Agent Requested（保持 always 规则总数 5 条）；其强制力由
++> `04_stage_gate_and_memory.mdc` §4 的收尾门禁条目在 always 层兜底。
++
++## 1. 必交物与判红条件
++
++- 每阶段**必交** `edge/docs/refactor/stages/<id>/test-report.md`，六节齐备、无空节（无内容写「无」并说明原因）。
++- **缺此文件 = 验收一律判红**：`/stage-done` 不得收尾、`STAGE-STATE.md` 不得推进状态、
++  `memory-steward` 不得写 handoff 的完成结论。
++- 六节不全、第 ⑥ 节无「未覆盖项及原因」、第 ④ 节无可复现命令，同样判红。
++- 同目录另有 `spec-digest.md`（由 `spec-reader` 产出），是开工产物，不替代 `test-report.md`。
++
++## 2. test-report.md 固定六节（顺序不可变）
++
++```markdown
++# <阶段号> 阶段测试报告
++
++## ① 验收项 → 用例对照表
++| 验收项编号 | 验收项 | 对应用例名 | 覆盖结论 |
++
++## ② 使用了哪些 Fake、各自模拟什么边界
++| Fake 名称 | 对应接口 | 模拟的边界 / 异常 | 为何本阶段需要 |
++
++## ③ 用例表
++| 用例名 | 输入 | 预期 | 实际 | 结论 |
++（结论只允许：通过 / 失败 / 跳过并注明原因）
++
++## ④ 可复现的完整运行命令与运行环境
++- 命令：<完整命令，含参数与工作目录>
++- 环境：<OS、Python 版本、venv 路径、关键依赖版本、pytest/mypy/ruff 版本>
++- 前置条件：<配置文件、Fixture、端口/设备占用说明>
++
++## ⑤ 汇总
++| 通过 | 失败 | 跳过 | 总耗时 | 覆盖率 |
++
++## ⑥ 本阶段未覆盖项及原因
++| 未覆盖的验收项 / 分支 | 原因 | 归属阶段 | 补测计划 |
++```
++
++- ① 必须与 `references/stage-catalog.md` 的验收项编号一一对应，不得自行改写验收项措辞。
++- ③ 的「实际」填真实输出片段，不得写「符合预期」等空话。
++- ⑥ **必须明确列出**未覆盖项及原因；写「全部覆盖」须能由 ① 与 ③ 交叉验证。
++
++## 3. 测试代码约定
++
++1. **每个测试函数上方一行中文注释标注对应验收项编号**，例如
++   `# 对应验收项 0-2：PlatformFactory 在 Windows 返回 WindowsAdapter`。
++2. **禁止空洞断言**：不得出现 `assert True`、`assert x`、`assert result is not None`
++   这类不校验业务语义的断言；必须断言具体值、类型、枚举码或回调次数。
++3. **禁止为让测试变绿而改被测代码**：测试失败时如实记录并回报，
++   由 `implementer` 在白名单内修正实现，或由用户裁决；不得改验收项、改预期值、
++   删用例、加跳过标记来"洗绿"。
++4. 测试函数 / 文件名遵循 `02_coding_hard_constraints.mdc` 的命名与类型标注要求；
++   Fake 必须与 `edge/interfaces/` 契约一致。
++
++## 4. 门禁联动
++
++| 环节 | 约束 |
++| --- | --- |
++| `test-writer` | 写测试 + 产出 `test-report.md`；不改被测代码 |
++| **人工闸门（用户本人）** | review 代码并签字；未签字不得进入 `stage-verifier` |
++| `stage-verifier` | 只核对证据是否齐备、**只出举证表**，不下最终 review 结论、不代签 |
++| `stage-done` | 把 `test-report.md` 列为必交物；缺件即停 |
++| `memory-steward` | handoff 与 `STAGE-STATE.md` 证据栏必须记录 `test-report.md` 路径 |
++| 用户本人 | 最终 review 结论**由用户签字**，任何 agent 不得代签 |
++
++## 5. 目录产物约定
++
++```
++edge/docs/refactor/stages/<id>/
++  ├─ spec-digest.md     # spec-reader：读图读方案的语义摘要（开工产物）
++  └─ test-report.md     # test-writer：六节测试报告（收尾必交物）
++```
++
++- 目录按需创建，不预建空目录；每阶段各一份，不复用、不覆盖上一阶段报告。
++- 报告是 L4 资产，只读归档；发现写错时追加更正说明，不静默改写历史结论。
+
+===== .codebuddy\skills\edge-refactor\references\decisions.md =====
+diff --git "a/F:\\new zhineng\\.codebuddy\\_diffbak\\.codebuddy\\skills\\edge-refactor\\references\\decisions.md" "b/f:\\new zhineng\\.codebuddy\\skills\\edge-refactor\\references\\decisions.md"
+index 0efacdc..db41918 100644
+--- "a/F:\\new zhineng\\.codebuddy\\_diffbak\\.codebuddy\\skills\\edge-refactor\\references\\decisions.md"	
++++ "b/f:\\new zhineng\\.codebuddy\\skills\\edge-refactor\\references\\decisions.md"	
+@@ -2,5 +2,5 @@
+ 
+ > 本文件是 L3 长资料，记录**用户已定裁决**。裁决优先级仅次于用户当次指令与 L1 契约层。
+-> 与 `docs/spec/` 旧图冲突时，以 L1 + 本文件为准；不得反过来改图或改 L1。
++> 与 `edge/docs/spec/` 旧图冲突时，以 L1 + 本文件为准；不得反过来改图或改 L1。
+ > 新增/变更裁决必须由用户明确下达；写入本协议后同步项目记忆与 handoff。
+ 
+@@ -10,7 +10,7 @@
+ 
+ - **冲突来源**：
+-  - `docs/spec/整体流程/整体流程.txt` 第 1 段的 `SelfChecker.check_all()`、
++  - `edge/docs/spec/整体流程/整体流程.txt` 第 1 段的 `SelfChecker.check_all()`、
+     「部分失败 → 能力降级（IO 禁开锁 / 摄像头 offline / 模型拒识别）」分支。
+-  - `docs/spec/USB_Camera/USB.txt` 的 `UsbController.selfCheck()`、
++  - `edge/docs/spec/USB_Camera/USB.txt` 的 `UsbController.selfCheck()`、
+     `CaptureWorker.check_camera()` 预留节点与「阶段三 旁路自检流程」。
+ - **落地含义**：
+@@ -30,5 +30,5 @@
+   - 部分旧图在 `DOWN` / `CONNECTING` 阶段即出现心跳与解码线程，或在断线流程里
+     「先启心跳再宣告 DOWN」。
+-  - `docs/spec/整体流程/整体流程.txt` 已与裁决一致：
++  - `edge/docs/spec/整体流程/整体流程.txt` 已与裁决一致：
+     「HeartThread 与 DecodeThread 此时不启动」「UP 后 心跳与 Decode 并行启动 再 onLinkUp」。
+ - **落地含义**：
+@@ -48,5 +48,5 @@
+ 
+ - **冲突来源**：
+-  - `docs/spec/TCP/断线重连/断线重连.txt` 时序中的「查 `PendingRequest` 重发」
++  - `edge/docs/spec/TCP/断线重连/断线重连.txt` 时序中的「查 `PendingRequest` 重发」
+     与 `onLinkUp` 反复补报。
+   - 旧流程图中把 `EventCache` 画成按 `seq` 去重的缓存队列。
+
+===== .codebuddy\skills\edge-refactor\references\diagram-index.md =====
+diff --git "a/F:\\new zhineng\\.codebuddy\\_diffbak\\.codebuddy\\skills\\edge-refactor\\references\\diagram-index.md" "b/f:\\new zhineng\\.codebuddy\\skills\\edge-refactor\\references\\diagram-index.md"
+index 7f46ccc..a4406df 100644
+--- "a/F:\\new zhineng\\.codebuddy\\_diffbak\\.codebuddy\\skills\\edge-refactor\\references\\diagram-index.md"	
++++ "b/f:\\new zhineng\\.codebuddy\\skills\\edge-refactor\\references\\diagram-index.md"	
+@@ -3,59 +3,60 @@
+ > L3 长资料。**逐文件登记的唯一权威是 `edge/docs/spec/INDEX.md`**（36 份原始资料：11 `.txt` + 25 PNG），
+ > 本文件不复制那张表，只提供按图类型 / 阶段的检索视图与解读口径。
++> **全部路径以工作区根为基准**（`CODEBUDDY.md` §0），统一写 `edge/docs/spec/...`。
+ > 图片只取语义，不转录图中文字；命名裁决见 `glossary.md`，冲突裁决见 `decisions.md`。
+ 
+ ## 1. 图类型与载体
+ 
+-| 图类型 | 载体 | 主要用途 |
++| 图类型 | 载体（路径以工作区根为基准） | 主要用途 |
+ | --- | --- | --- |
+-| 类图 | 各目录 `.txt` 的 `classDiagram` / PlantUML 段 + 对应 PNG | 类职责、字段、实现/组合/注入关系 |
+-| 流程图 | 各目录 `.txt` 的 `flowchart TD` 段 + 对应 PNG | 分支、异常路径、循环边界 |
+-| 时序图 | 各目录 `.txt` 的 `sequenceDiagram` 段 + 对应 PNG | 跨对象调用顺序、并发与停机时序 |
+-| 整合类图 | `整体流程/整合类图代码.txt` + `整合类图.png` | 全系统分层与正交连线总览（旧版 snake_case） |
+-| 阶段时序 | `整体流程/阶段0-3.png`、`阶段4-5.png`、`阶段5-7.png` | 运行期业务全流程分段 |
+-| PNG 快照 | `deepseek_mermaid_YYYYMMDD_*.png` | 上述三类图的迭代渲染；文件名日期/哈希不承载语义 |
++| 类图 | 各模块目录 `.txt` 的 `classDiagram` / PlantUML 段 + 对应 PNG | 类职责、字段、实现/组合/注入关系 |
++| 流程图 | 各模块目录 `.txt` 的 `flowchart TD` 段 + 对应 PNG | 分支、异常路径、循环边界 |
++| 时序图 | 各模块目录 `.txt` 的 `sequenceDiagram` 段 + 对应 PNG | 跨对象调用顺序、并发与停机时序 |
++| 整合类图 | `edge/docs/spec/整体流程/整合类图代码.txt` + `edge/docs/spec/整体流程/整合类图.png` | 全系统分层与正交连线总览（旧版 snake_case） |
++| 阶段时序 | `edge/docs/spec/整体流程/阶段0-3.png`、`edge/docs/spec/整体流程/阶段4-5.png`、`edge/docs/spec/整体流程/阶段5-7.png` | 运行期业务全流程分段 |
++| PNG 快照 | 各模块 `deepseek_mermaid_YYYYMMDD_*.png` | 上述三类图的迭代渲染；文件名日期/哈希不承载语义 |
+ 
+ **解读口径**：每个模块目录恰好 1 个 `.txt` + 3 张 PNG，对应该 `.txt` 内的类图 / 流程图 / 时序图三段。
+-抽样核验（`TCP/周期心跳帧/`）确认该组为类图 `fe70d4`、时序图 `1e53dc`、流程图 `b7cc81`；
++抽样核验（`edge/docs/spec/TCP/周期心跳帧/`）确认该组为类图 `fe70d4`、时序图 `1e53dc`、流程图 `b7cc81`；
+ 其余目录的哈希命名不做逐张类型断言，一律以同目录 `.txt` 为准。
+ 
+-## 2. 按实施阶段检索
++## 2. 按实施阶段检索（共 9 个阶段）
+ 
+ | 阶段 | 先读 | 再看 |
+ | --- | --- | --- |
+-| `0` | `edge/docs/spec/整体重构方案.txt` §1/§2 | `整体流程/整体流程.txt` 第 1 段（启动与首连） |
+-| `a` | 同文件 §3 接口表 | `整体流程/整合类图代码.txt` 的「抽象接口层」包 |
++| `0` | `edge/docs/spec/整体重构方案.txt` §1/§2 | `edge/docs/spec/整体流程/整体流程.txt` 第 1 段（启动与首连） |
++| `a` | 同文件 §3 接口表 | `edge/docs/spec/整体流程/整合类图代码.txt` 的「抽象接口层」包 |
+ | `b` | 同文件 §3 `base/` 段 | 各模块图中的线程启停、`stopEvent` 片段 |
+-| `c1` | `配置文件接口/` 全部 | `整体流程/整体流程.txt` 的配置加载分支 |
+-| `c2` | `日志/` 全部 | 停机时序中的 `LogManager.stop()` 段 |
+-| `c3` | `TCP/断线重连/`、`TCP/周期心跳帧/`、`TCP/帧解码/` | `整体流程/阶段0-3.png`、`阶段5-7.png` |
+-| `c4` | `USB_Camera/` 全部 | `整体流程/阶段4-5.png` 上半段 |
+-| `c5` | `识别/` 全部 | `整体流程/阶段4-5.png` 下半段 |
+-| `d` | `整体流程/整合类图*`、`阶段5-7.png` | 全部模块图中的 Sink 回调与停机片段 |
++| `c1` | `edge/docs/spec/配置文件接口/` 全部 | `edge/docs/spec/整体流程/整体流程.txt` 的配置加载分支 |
++| `c2` | `edge/docs/spec/日志/` 全部 | 停机时序中的 `LogManager.stop()` 段 |
++| `c3` | `edge/docs/spec/TCP/断线重连/`、`edge/docs/spec/TCP/周期心跳帧/`、`edge/docs/spec/TCP/帧解码/` | `edge/docs/spec/整体流程/阶段0-3.png`、`edge/docs/spec/整体流程/阶段5-7.png` |
++| `c4` | `edge/docs/spec/USB_Camera/` 全部 | `edge/docs/spec/整体流程/阶段4-5.png` 上半段 |
++| `c5` | `edge/docs/spec/识别/` 全部 | `edge/docs/spec/整体流程/阶段4-5.png` 下半段 |
++| `d` | `edge/docs/spec/整体流程/整合类图代码.txt`、`edge/docs/spec/整体流程/阶段5-7.png` | 全部模块图中的 Sink 回调与停机片段 |
+ 
+ ## 3. 按图类型检索常用语义
+ 
+-| 想确认什么 | 去哪找 |
++| 想确认什么 | 去哪找（路径以工作区根为基准） |
+ | --- | --- |
+-| 首连 / UP 后启线程顺序 | `整体流程/整体流程.txt` 第 1 段；裁决 D-02 |
+-| 退避序列与可打断等待 | `TCP/断线重连/断线重连.txt` 流程图 / 时序图 |
+-| 心跳失败去重与非 UP 行为 | `TCP/周期心跳帧/心跳帧.txt` 流程图 / 时序图 |
+-| 半包粘包与超长帧 | `TCP/帧解码/帧解码.txt` 流程图 |
+-| 并发拉起 worker 并立即返回 | `USB_Camera/USB.txt` 流程图；`整体流程/阶段4-5.png` |
+-| 推理 3s 超时与组 ack | `识别/识别.txt` 流程图 / 时序图 |
+-| 异步队列、logMode 路由、滚动 | `日志/日志.txt` 流程图 / 时序图 |
+-| 配置类型推断与 Fail-Fast | `配置文件接口/配置文件图代码.txt` 流程图 / 时序图 |
+-| 一键停机严格串行 | `整体流程/整体流程.txt` 第 3 段；`阶段5-7.png` |
++| 首连 / UP 后启线程顺序 | `edge/docs/spec/整体流程/整体流程.txt` 第 1 段；裁决 D-02 |
++| 退避序列与可打断等待 | `edge/docs/spec/TCP/断线重连/断线重连.txt` 流程图 / 时序图 |
++| 心跳失败去重与非 UP 行为 | `edge/docs/spec/TCP/周期心跳帧/心跳帧.txt` 流程图 / 时序图 |
++| 半包粘包与超长帧 | `edge/docs/spec/TCP/帧解码/帧解码.txt` 流程图 |
++| 并发拉起 worker 并立即返回 | `edge/docs/spec/USB_Camera/USB.txt` 流程图；`edge/docs/spec/整体流程/阶段4-5.png` |
++| 推理 3s 超时与组 ack | `edge/docs/spec/识别/识别.txt` 流程图 / 时序图 |
++| 异步队列、logMode 路由、滚动 | `edge/docs/spec/日志/日志.txt` 流程图 / 时序图 |
++| 配置类型推断与 Fail-Fast | `edge/docs/spec/配置文件接口/配置文件图代码.txt` 流程图 / 时序图 |
++| 一键停机严格串行 | `edge/docs/spec/整体流程/整体流程.txt` 第 3 段；`edge/docs/spec/整体流程/阶段5-7.png` |
+ 
+ ## 4. 图与 L1 的已知冲突点（不改图，写 handoff）
+ 
+-| 冲突 | 图中出处 | 裁决 |
++| 冲突 | 图中出处（路径以工作区根为基准） | 裁决 |
+ | --- | --- | --- |
+-| 自检 / 能力降级 / 自检线程 | `整体流程.txt` 第 1 段、`USB.txt` 预留节点与旁路自检 | D-01 |
++| 自检 / 能力降级 / 自检线程 | `edge/docs/spec/整体流程/整体流程.txt` 第 1 段、`edge/docs/spec/USB_Camera/USB.txt` 预留节点与旁路自检 | D-01 |
+ | 非 UP 阶段出现心跳、解码线程 | 部分 TCP 图与断线分支 | D-02（L1 整体流程第 1 段与本裁决一致） |
+-| `PendingRequest` 重发、按 `seq` 去重 | `TCP/断线重连.txt` 时序、`EventCache` 补报段 | D-03 |
++| `PendingRequest` 重发、按 `seq` 去重 | `edge/docs/spec/TCP/断线重连/断线重连.txt` 时序、`EventCache` 补报段 | D-03 |
+ | 专用 getter、`getInstance`、`getValue` | 配置与日志类图 | L1 接口表 + `glossary.md` §3 |
+ | 旧版 snake_case 标识符 | 全部图 | NAMING_AUTHORITY |
+-| 「阶段 0~7」编号 | 整体流程三段时序 | 运行期业务时序，非实施阶段 `0~d` |
++| 「阶段 0~7」编号 | 整体流程三段时序 | 运行期业务时序，非 9 个实施阶段 |
+ 
+ ## 5. 维护口径
+@@ -64,2 +65,4 @@
+ - 禁止重新渲染、重命名或覆盖任何 PNG；禁止把图中文字抄进 `.py` 注释。
+ - 本文件与 `INDEX.md` 不一致时，以 `INDEX.md` 为准并修正本文件。
++- `spec-reader` 按本视图定位资料后，产出 `edge/docs/refactor/stages/<id>/spec-digest.md`，
++  其中「L1 落地标识符」列不得照抄图名。
+
+===== .codebuddy\skills\edge-refactor\references\stage-catalog.md =====
+diff --git "a/F:\\new zhineng\\.codebuddy\\_diffbak\\.codebuddy\\skills\\edge-refactor\\references\\stage-catalog.md" "b/f:\\new zhineng\\.codebuddy\\skills\\edge-refactor\\references\\stage-catalog.md"
+index ffa0926..3ae0116 100644
+--- "a/F:\\new zhineng\\.codebuddy\\_diffbak\\.codebuddy\\skills\\edge-refactor\\references\\stage-catalog.md"	
++++ "b/f:\\new zhineng\\.codebuddy\\skills\\edge-refactor\\references\\stage-catalog.md"	
+@@ -3,80 +3,143 @@
+ > L3 长资料。阶段序列、交付范围与验收项的**唯一权威是 L1 `edge/docs/spec/整体重构方案.txt` §3/§5**；
+ > 本文件是开工/验收时使用的工作副本，不替代 L1，变更阶段定义须走 L1 diff + 用户批准。
+-> 运行态（当前是哪个状态）见 L4 `edge/docs/refactor/STAGE-STATE.md`，本文件不记录状态。
++> 运行态见 `edge/docs/refactor/STAGE-STATE.md`，本文件不记录状态。
++> 路径一律以工作区根为基准（`CODEBUDDY.md` §0）；`references/<file>`、`stages/<id>/` 为约定简写。
++
++## 0. 现有 27 个 `.py` 契约判定（2026-11-10）
++
++判定口径：以方案 A 分层、`编码规范.mdc` 命名/注释/类型标注、`edge/interfaces/` 契约一致性为准。
++**结论：27/27 均为新契约风格骨架，无旧代码**（26 项达标 + 1 项契约断裂）；
++全部 27 个文件在唯一 `"""模块说明"""` 后第 2 行都有 `from __future__ import annotations`，
++全局无 `ConfigManager` / `LogExecutor` / `threading.Thread` / `argparse` / 旧式 `typing` 泛型 /
++`configparser` / `cv2` / `numpy` / `vision_core` 命中。
++
++| # | 路径（相对工作区根） | 结论 | 证据要点 |
++| --- | --- | --- | --- |
++| 1 | `edge/exceptions.py` | 新骨架 | `ErrorCode(IntEnum)` 五码 + 唯一 `EdgeError`，`code.name` |
++| 2 | `edge/__init__.py` | 新骨架 | 仅包 docstring + future import |
++| 3 | `edge/interfaces/__init__.py` | 新骨架 | 声明零实现零业务依赖，无实现 import |
++| 4 | `edge/interfaces/i_camera.py` | 新骨架 | `ICameraDevice(ABC)` 四抽象方法体 `...` |
++| 5 | `edge/interfaces/i_config.py` | 新骨架 | `get(section, key, default=None) -> Any`，仅 abc + Any |
++| 6 | `edge/interfaces/i_logger.py` | 新骨架 | `ILogger` 恰 `rx/tx/info/error` 四方法，**未定义 `FrameData`** |
++| 7 | `edge/interfaces/i_platform.py` | 新骨架 | `joinPath/newline/signalMap/monotonicClock/lockFile` 全抽象 |
++| 8 | `edge/interfaces/i_recognition_engine.py` | 新骨架 | `loadModel/infer`，仅依赖 `i_camera.FrameImage` |
++| 9 | `edge/interfaces/i_sinks.py` | 新骨架 | 三个 Sink ABC、10 个抽象方法体 `...` |
++| 10 | `edge/interfaces/i_socket.py` | 新骨架 | `connect/recv/send/close`，`send -> bool`，无 `setOption` |
++| 11 | `edge/interfaces/i_thread.py` | 新骨架 | `stop(timeout=3.0)` / `isRunning()`，Doxygen 注释齐全 |
++| 12 | `edge/platform/__init__.py` | 新骨架 | 包标记，无平台分支泄漏 |
++| 13 | `edge/platform/adapter.py` | 新骨架 | `WindowsAdapter/LinuxAdapter/PlatformFactory`，`sys.platform` 仅在 `create()` |
++| 14 | `edge/platform/file_lock.py` | 新骨架 | `acquireOrExit()` 内 `sys.exit`，`NotImplementedError` 转 `EdgeError(CONFIG)` |
++| 15 | `edge/tests/__init__.py` | 新骨架 | 声明 unit/contract/integration/fakes 分层 |
++| 16 | `edge/tests/contract/__init__.py` | 新骨架 | 包标记 |
++| 17 | `edge/tests/contract/test_phase0_foundation.py` | 新骨架 | 5 个 `testXxx` 覆盖异常码、平台分支、双开取锁 |
++| 18 | `edge/tests/contract/test_interface_contracts.py` | 新骨架 | `assert isinstance(Fake*, I*)`；但 import `FakeLogger` 会被 #21 连带阻断 |
++| 19 | `edge/tests/fakes/__init__.py` | 新骨架 | 声明与 interfaces 契约同步 |
++| 20 | `edge/tests/fakes/fake_camera_device.py` | 新骨架 | 四方法签名对齐；`self.opened` 未显式标类型 |
++| 21 | `edge/tests/fakes/fake_config.py` | 新骨架 | `get` 签名一致，`values: dict[str, Any]` |
++| 22 | `edge/tests/fakes/fake_logger.py` | **新骨架·契约断裂** | 第 4 行 `from edge.interfaces.i_logger import FrameData, ILogger`，`FrameData` 全库不存在 → 必然 ImportError |
++| 23 | `edge/tests/fakes/fake_platform_adapter.py` | 新骨架 | 5 方法签名一致，`lockResult` 显式标注 |
++| 24 | `edge/tests/fakes/fake_recognition_engine.py` | 新骨架 | `loadModel/infer` 与接口一致，`list[DetectionItem]` |
++| 25 | `edge/tests/fakes/fake_sinks.py` | 新骨架 | 10 个回调签名逐一对齐；`linkUpCount` 未显式标类型 |
++| 26 | `edge/tests/fakes/fake_socket.py` | 新骨架 | `send() -> bool`、`recv() -> bytes` |
++| 27 | `edge/tests/fakes/fake_thread.py` | 新骨架 | `stop(timeout=3.0)` 一致；`startCount/running` 未显式标类型 |
++
++**总体**：不是「按新契约搭好的完整骨架」，而是**只到阶段 0/a 的干净半成品**——
++`base/`、`infra/`、`modules/*/`、`control/`、`main.py`、`app_init.py`、`tests/unit`、`tests/integration` 全部缺席（约 20 个计划文件）。
++已知硬伤：`fake_logger.py` 的 `FrameData` 导入使契约测试收集期失败；另有 9 处 Fake 字段缺显式类型标注；
++`main.py` 不存在，进程锁「第一件事拿锁」无调用方。
++
++**对 0/a 目标的影响**：因判定为**新骨架而非旧代码**，不启用「按新契约重写或迁移」；
++按用户口径改为「先把已有代码看懂、按契约审一遍、补上能说清楚的单测」，
++**不盲目重写、不以已有实现直接补验收**。若后续复核发现某文件实为旧代码，则该文件单独转入
++「按新契约重写或迁移」并给 diff 等批准。已有文件一律不等于已验收。
+ 
+ ## 1. 序列与依赖
+ 
+-```
+-0 → a → b → c1 → c2 → c3 → c4 → c5 → d
+-```
++**共 9 个阶段**：`0 → a → b → c1 → c2 → c3 → c4 → c5 → d`。
+ 
+ - 严格串行推进，不跳阶、不合并；`c1` 与 `c2` 同属 infra 但按序验收。
+ - 一次只做已确认范围内的文件；范围外留 TODO 并标明归属阶段。
+ - 检视项按阶段逐步收敛，不得用问题清单阻断当前阶段开工。
++- 验收项编号 `<阶段>-<序号>` 供 `test-report.md` ① 对照表与测试函数注释引用。
+ 
+ ## 2. 阶段明细
+ 
+-### 阶段 0 — 异常与平台骨架
+-
+-- **交付**：`edge/exceptions.py`、`edge/platform/adapter.py`、`edge/platform/file_lock.py`（Windows 实现，Linux 分支 `NotImplementedError` + TODO）。
+-- **验收**：双开时拿锁失败并立即退出；`EdgeError` 抛出/捕获与日志格式正确；`PlatformFactory` 在 Windows 返回 `WindowsAdapter`，Linux 分支按骨架抛 `NotImplementedError`。
++### 阶段 0 — 已有骨架：审读 + 契约核验 + 补可举证单测
++
++- **现状**：`exceptions.py` + `platform/` 均为新骨架（判定表 #1、#12~#14），`main.py` / `app_init.py` 尚未建立。
++- **目标**：先把已有代码看懂、按 L1 契约逐条审一遍、补上能说清楚的单测；不盲目重写、不直接补验收。
++- **交付**：`stages/0/spec-digest.md`（逐文件审读结论与契约核验表）、补强单测、`stages/0/test-report.md`；
++  实现文件仅在白名单内按需修正。
++- **验收项**：
++  - `0-1` 逐文件审读结论齐备，明确「新骨架 / 需修正」及依据。
++  - `0-2` `EdgeError` 抛出 / 捕获与 `code.name` 日志格式正确。
++  - `0-3` `PlatformFactory` Windows 返回 `WindowsAdapter`；Linux 分支 `NotImplementedError` + TODO。
++  - `0-4` 双开取锁失败并立即退出；已知缺口「进程锁无调用方」写入未覆盖项及原因。
+ - **适用裁决**：D-01（启动流程不引入自检）。
+-- **禁止**：在 `main()` 用 `try/except` 包业务流程；除 `PlatformFactory` 外出现 `sys.platform`。
+-
+-### 阶段 a — 接口契约
+-
+-- **交付**：`edge/interfaces/` 全部 `i_*.py`（`i_config` / `i_logger` / `i_thread` / `i_socket` / `i_camera` / `i_recognition_engine` / `i_platform` / `i_sinks`），及 `tests/fakes/` 同步 Fake。
+-- **验收**：mypy（3.9 strict）通过；零实现、零业务 import；全部 camelCase；文件顶部唯一模块 docstring，其余 `##` 注释覆盖；契约测试跑通。
++- **禁止**：`main()` 用 `try/except` 包业务流程；除 `PlatformFactory` 外出现 `sys.platform`。
++
++### 阶段 a — 已有骨架：审读 + 契约一致性核验 + 补可举证单测
++
++- **现状**：`interfaces/` 8 接口实质达标；`tests/fakes/` 8 个 Fake 形式上齐备但契约一致性不成立（#22）。
++- **目标**：把已有代码看懂、按契约审一遍、补上能说清楚的单测；不盲目重写、不直接补验收。
++- **交付**：`stages/a/spec-digest.md`、契约核验表、Fake / 契约测试修正（白名单内）、`stages/a/test-report.md`。
++- **验收项**：
++  - `a-1` `interfaces/` 零实现、零业务 import、全 camelCase、Doxygen 注释覆盖。
++  - `a-2` 8 个 Fake 与 8 个接口签名逐一对齐；`fake_logger.py` 的 `FrameData` 断裂有明确结论与处置。
++  - `a-3` 契约测试可收集、可执行、通过；mypy（3.9 strict）通过。
++  - `a-4` 已知 9 处 Fake 字段类型标注缺口有结论（补齐或列入未覆盖项并说明）。
+ - **适用裁决**：D-01（`interfaces/` 不新增自检接口）、NAMING_AUTHORITY。
+-- **禁止**：静默修改既有接口签名或既有测试断言；新增接口不同步 Fake。
++- **禁止**：静默改既有接口签名或既有测试断言；新增接口不同步 Fake；为让测试变绿而改被测代码。
+ 
+ ### 阶段 b — 通用生命周期
+ 
+ - **交付**：`edge/base/base_thread.py`、`edge/base/base_service.py`。
+-- **验收**：Demo 子类验证 `stop()` 能瞬间打断 `interruptibleWait`；join 超时强制返回；重复 `stop` 幂等；`BaseService` 的 `init/start/stop` 三件套可多态。
+-- **适用裁决**：D-02（线程启停时机由门面状态决定，基类不自行拉起业务线程）。
+-- **禁止**：裸 `threading.Thread`、裸 `time.sleep`、`base/` import 业务模块。
++- **验收项**：`b-1` `stop()` 瞬间打断 `interruptibleWait`；`b-2` join 超时强制返回；
++  `b-3` 重复 `stop` 幂等且 `BaseService` 三件套可多态。
++- **适用裁决**：D-02；**禁止**裸 `threading.Thread`、裸 `time.sleep`、`base/` import 业务模块。
+ 
+ ### 阶段 c1 — 配置管理
+ 
+-- **交付**：`edge/infra/config_manager.py`（`IniConfigManager(IConfig)`）。
+-- **验收**：Fail-Fast（文件缺失抛 `EdgeError(CONFIG, ...)`）；类型推断 int/float/bool/list/str；`get(section, key, default=None)` 无 default 且缺失抛异常、有 default 返回默认并记 info；`instance()` 双检锁且可直接构造用于测试。
+-- **适用裁决**：NAMING_AUTHORITY（`getValue` → `get`）。
+-- **禁止**：模块内 import 配置模块；业务模块直连配置单例（参数一律构造注入）。
++- **交付**：`edge/infra/config_manager.py`。
++- **验收项**：`c1-1` Fail-Fast；`c1-2` 类型推断 int/float/bool/list/str；
++  `c1-3` `get(default=None)` 两分支；`c1-4` `instance()` 双检锁且可直接构造用于测试。
++- **适用裁决**：NAMING_AUTHORITY；**禁止**模块内 import 配置模块、业务模块直连配置单例。
+ 
+ ### 阶段 c2 — 日志管理
+ 
+-- **交付**：`edge/infra/log_manager.py`（`LogManager(ILogger)`、`LogExecutor(BaseThread)`、`LogFileWriter`）。
+-- **验收**：唯一 BlockingQueue 异步消费；跨天/超大小滚动；磁盘不足清理；停机清空队列并关句柄；`error(exception=e)` 自动附堆栈；对外仅 `rx/tx/info/error` 四方法。
+-- **适用裁决**：NAMING_AUTHORITY（`getInstance` → `instance()`）。
+-- **禁止**：在业务线程内做磁盘 IO 阻塞；`LogManager` 之外另建队列。
++- **交付**：`edge/infra/log_manager.py`。
++- **验收项**：`c2-1` 唯一 BlockingQueue 异步消费、对外仅四方法；`c2-2` 跨天/超限滚动 + 磁盘清理；
++  `c2-3` 停机清空队列并关句柄；`c2-4` `error(exception=e)` 自动附堆栈。
++- **禁止**：业务线程内磁盘 IO 阻塞；`LogManager` 之外另建队列。
+ 
+ ### 阶段 c3 — TCP 模块
+ 
+-- **交付**：`edge/modules/tcp/` 五个文件（`tcp_control_layer` / `tcp_reconnect_thread` / `tcp_decode_thread` / `tcp_heart_thread` / `tcp_socket`）+ `integration` 联调。
+-- **验收**：退避序列 `[1,2,4,8,16,30]` 构造注入且可打断；心跳失败去重；解码半包/粘包与超长帧；`transitionTo(state, reason, source) -> bool` 在心跳/解码并发宣告 DOWN 时靠返回值去重；`FakeSocket` 联调通过。
+-- **适用裁决**：**D-02**（非 UP 不启其他线程）、**D-03**（`seq` 只填不用、不做去重）、NAMING_AUTHORITY（不感知业务字符串）。
+-- **禁止**：`tcp/` 下出现 `config` / `cv2` / `numpy` / `vision_core`；直接读写 `linkState`；`send` 返回 False 后额外检查。
++- **交付**：`edge/modules/tcp/` 五个文件 + `integration` 联调。
++- **验收项**：`c3-1` 退避 `[1,2,4,8,16,30]` 构造注入且可打断；`c3-2` 心跳失败去重、非 UP 返回 `False`；
++  `c3-3` 半包/粘包 + 超长帧；`c3-4` `transitionTo` 并发宣告 DOWN 靠返回值去重；`c3-5` `FakeSocket` 联调。
++- **适用裁决**：**D-02**、**D-03**、NAMING_AUTHORITY（不感知业务字符串）。
++- **禁止**：`tcp/` 下 `config/cv2/numpy/vision_core`；直接读写 `linkState`。
+ 
+ ### 阶段 c4 — USB 采集模块
+ 
+-- **交付**：`edge/modules/usb/` 三个文件（`usb_controller` / `usb_capture_worker` / `usb_camera_device`）+ `FakeCamera` 联调。
+-- **验收**：`init` 校验路径；`startCapture` 前置校验后同时 `start()` 全部 4 个 worker 并立即返回；双路取图落盘；滚动删除（超 30% 删旧）；成功/失败回调不影响其他 worker。
+-- **适用裁决**：**D-01**（自检留空接口，不新增自检线程）、D-02（非 UP 不预启采集 worker）。
+-- **禁止**：在 Sink 回调内做阻塞 IO；把自检结果接进启停决策；跨模块 import `recognition/`。
++- **交付**：`edge/modules/usb/` 三个文件 + `FakeCamera` 联调。
++- **验收项**：`c4-1` 4 线程并发拉起并立即返回；`c4-2` 双路取图落盘；`c4-3` 超 30% 滚动删旧；
++  `c4-4` 成功/失败回调互不影响。
++- **适用裁决**：**D-01**（自检留空接口）、D-02；**禁止** Sink 回调内阻塞 IO、跨模块 import `recognition/`。
+ 
+ ### 阶段 c5 — 识别模块
+ 
+-- **交付**：`edge/modules/recognition/` 四个文件（`recognition_controller` / `recognition_worker` / `recognition_yolo_engine` / `recognition_utils`）+ `FakeEngine` 联调。
+-- **验收**：模型仅 `loadModel` 一次；`trigger(workerId, requestId)` 校验空闲后 `start()` 并立即返回；推理 3s 超时（构造注入）；空间归集 + 查表校验 + 组 ack；回调上抛；纯函数留在 `recognition_utils.py`。
+-- **适用裁决**：D-01、D-02、`trigger()` 内 NPU 并发限流仅留 TODO（L1 定稿决策）。
+-- **禁止**：实现 NPU 并发限流信号量（实测后再加）；在回调里发帧或做重活。
++- **交付**：`edge/modules/recognition/` 四个文件 + `FakeEngine` 联调。
++- **验收项**：`c5-1` 模型仅 `loadModel` 一次、`trigger` 立即返回；`c5-2` 推理 3s 超时（构造注入）；
++  `c5-3` 空间归集 + 查表校验 + 组 ack；`c5-4` 回调上抛、纯函数留在 `recognition_utils.py`。
++- **适用裁决**：D-01、D-02、`trigger()` 内 NPU 并发限流仅留 TODO。
+ 
+ ### 阶段 d — 控制、装配与端到端
+ 
+ - **交付**：`edge/control/edge_control.py`、`event_cache.py`、`edge/app_init.py`、`edge/main.py`。
+-- **验收**：`routeSignal` 按注入的 `asyncHandlers` 键分发；`onLinkDown` 统一决策；`EventCache` 按 `event_cache.enabled` 补发/丢弃；一键停机严格串行 `USB → 识别 → TCP → 日志`；进程锁；Windows 端到端跑通。
++- **验收项**：`d-1` `routeSignal` 按注入 `asyncHandlers` 键分发；`d-2` `EventCache` 补发/丢弃且 `seq` 只填不用；
++  `d-3` 一键停机严格串行 `USB → 识别 → TCP → 日志` + 进程锁；`d-4` Windows 端到端。
+ - **适用裁决**：**D-01 / D-02 / D-03 全部复核**。
+-- **禁止**：`app_init.py` 写业务逻辑；`main()` 用 `try/except` 或 `if not success:` 包业务流程；`control/` 放单一模块门面；实现按 `seq` 去重或 `PendingRequest` 重发。
++- **禁止**：`app_init.py` 写业务逻辑；`main()` 用 `try/except` 包业务流程；实现按 `seq` 去重。
+ 
+ ## 3. 每阶段通用门禁
+@@ -84,7 +147,12 @@
+ | 环节 | 必做 |
+ | --- | --- |
+-| 开工 | 读 `CODEBUDDY.md`、4 条 always 规则、本文件、`STAGE-STATE.md`、`decisions.md`、`diagram-index.md`；`contract-guard` 核验 L1 基线 |
+-| 实现 | 只写已确认范围；遵守编码硬约束与依赖方向；逐条复核适用裁决 |
+-| 收尾 | `ruff` / `mypy` / `pytest` + 契约测试证据；`python-code-review` 检视一次；handoff；`STAGE-STATE` 证据栏；沉淀 |
++| 开工 | 读 `CODEBUDDY.md`、4 条 always 规则、本文件（含 §0）、`STAGE-STATE.md`、`decisions.md`、`diagram-index.md`；`contract-guard` 核验 L1 基线 |
++| 步骤 1 | `spec-reader` 产出 `stages/<id>/spec-digest.md`（禁止把图上方法名当 API） |
++| 步骤 2 | `implementer` 只改开工清单白名单文件 |
++| 步骤 3 | `test-writer` 产出测试 + `stages/<id>/test-report.md`（六节，见 `test-visibility.mdc`） |
++| **人工闸门** | **用户本人 review 代码并签字**；未签字不得进入步骤 4 |
++| 步骤 4 | `stage-verifier` 只出举证表；最终 review 结论由用户签字，不许代签 |
++| 收尾 | `ruff` / `mypy` / `pytest` + 契约测试证据；`python-code-review` 一次；handoff；`STAGE-STATE` 证据栏；沉淀 |
++| 判红 | **缺 `test-report.md` 或六节不全 → 验收一律判红、不得收尾** |
+ | 状态 | 用户确认后才可把 `pending → in_progress → done`；阻塞写 `blocked` + 原因 |
+ 
+
+===== .codebuddy\skills\edge-refactor\SKILL.md =====
+diff --git "a/F:\\new zhineng\\.codebuddy\\_diffbak\\.codebuddy\\skills\\edge-refactor\\SKILL.md" "b/f:\\new zhineng\\.codebuddy\\skills\\edge-refactor\\SKILL.md"
+index 9c4ed71..8126aee 100644
+--- "a/F:\\new zhineng\\.codebuddy\\_diffbak\\.codebuddy\\skills\\edge-refactor\\SKILL.md"	
++++ "b/f:\\new zhineng\\.codebuddy\\skills\\edge-refactor\\SKILL.md"	
+@@ -8,15 +8,19 @@ description: RK3588 边缘计算重构流程技能。重构阶段开工、收尾
+ ## 1. 适用边界
+ 
+-- 适用于方案 A 实施阶段 `0 / a / b / c1 / c2 / c3 / c4 / c5 / d` 的开工、收尾与沉淀。
++- 适用于方案 A 实施阶段 `0 / a / b / c1 / c2 / c3 / c4 / c5 / d`（**共 9 个阶段**）的开工、收尾与沉淀。
+ - 同时适用于配置期（只做流程配置，不写 `edge/` 下 `.py`）与实现期（按已确认范围写代码）。
+ - 不适用于：写单个函数、回答概念问题、与阶段无关的临时调试。
+ - 触发命令：`/stage <阶段>`、`/stage-done <阶段>`。
++- 路径一律以工作区根为基准（见 `CODEBUDDY.md` §0）：`references/<file>` 与
++  `stages/<id>/` 是两个约定简写，不另起 `docs/spec/...` 基准。
+ 
+ ## 2. 工作流总览
+ 
+ ```
+-开工（只读） → 用户确认 → 实现 → 收尾（验收 + 记录） → 沉淀（经验 + 记忆） → 用户确认状态
++开工（只读） → 用户确认 → 四步执行 → 人工闸门（用户签字） → 收尾（验收 + 记录） → 沉淀 → 用户确认状态
+ ```
+ 
++四步与闸门由 `commands/stage.md` 编排：`spec-reader` → `implementer` → `test-writer`
++→ **用户本人 review 并签字** → `stage-verifier`。
+ 任一步缺用户确认，就停在那一步；不推测、不代用户批准。
+ 
+@@ -25,9 +29,9 @@ description: RK3588 边缘计算重构流程技能。重构阶段开工、收尾
+ 按顺序读，不跳步：
+ 
+-1. `CODEBUDDY.md` §2 权威优先级、§4 阶段清单。
++1. `CODEBUDDY.md` §0 路径基准、§2 权威优先级、§4 阶段清单。
+ 2. always 规则 `01_naming_authority.mdc` / `02_coding_hard_constraints.mdc` /
+    `03_dependency_and_layout.mdc` / `04_stage_gate_and_memory.mdc`；按 description 判断是否加载
+-   Agent Requested 规则 `ref_spec_semantics.mdc`、`ref_legacy_mapping.mdc`。
+-3. `references/stage-catalog.md` → 本阶段交付范围与验收项。
++   Agent Requested 规则 `ref_spec_semantics.mdc`、`ref_legacy_mapping.mdc`、`test-visibility.mdc`。
++3. `references/stage-catalog.md` → 本阶段交付范围与验收项（含 §0 现状判定）。
+ 4. `edge/docs/refactor/STAGE-STATE.md` → 当前状态；只有 `pending` 才具备开工条件。
+ 5. `references/decisions.md` → 本阶段适用的裁决。
+@@ -38,21 +42,26 @@ description: RK3588 边缘计算重构流程技能。重构阶段开工、收尾
+ 产出（只输出，不写文件）：
+ 
+-- **开工清单**：交付文件、验收项、对应 spec 资料、适用裁决、明确禁止事项。
++- **开工清单**：交付文件白名单、验收项、对应 spec 资料、适用裁决、明确禁止事项。
+ - **L1 基线**：`无变更` 或 `有变更 + 完整 diff`；有变更即阻断，转入等待批准。
+ - **待确认项**：必须用户拍板的问题；没有就写「无」。
+ 
+-开工阶段禁止：写任何 `.py`、改 `STAGE-STATE` 状态、改 spec 原文/图片、改 L1。
++开工阶段禁止：写任何 `.py`、改 `STAGE-STATE` 状态、改 spec、改 L1。
+ 
+ ## 4. 收尾工作流：收尾写什么
+ 
+-前置：用户已确认开工、实现已完成、验收项可逐条举证。
+-
+-1. 跑 `ruff` / `mypy`（3.9 strict） / `pytest` 与契约测试，保留命令与输出。
+-2. 写过或改过 Python → 调用 `python-code-review` 检视一次，输出报告，标明跨阶段遗留项及归属阶段。
+-3. 复核 L1 零自动变更；若确需契约变更，附 diff 并**保持「等待批准」状态**，不得落地。
+-4. 按 `edge/docs/refactor/HANDOFF-TEMPLATE.md` 产出本阶段 handoff。
+-5. 更新 `edge/docs/refactor/STAGE-STATE.md`：逐条证据、更新时间；状态先标「待用户确认」。
+-6. 执行 §5 沉淀。
+-7. 输出收尾结论；**用户确认后**才把状态改为 `done`。
++前置：用户已确认开工、四步执行完毕、**用户本人已 review 代码并签字**、验收项可逐条举证。
++
++1. 确认 `edge/docs/refactor/stages/<id>/test-report.md` 存在且六节齐备；
++   **缺件即验收判红、不得收尾**（见 `test-visibility.mdc`）。
++2. 跑 `ruff` / `mypy`（3.9 strict） / `pytest` 与契约测试，保留命令与输出。
++3. 写过或改过 Python → 调用 `python-code-review` 检视一次，输出报告，
++   标明跨阶段遗留项及归属阶段；不得用问题清单阻断收尾。
++4. 调用 `contract-guard` 复核 L1 **零自动变更**；若确需契约变更，
++   附 diff 并**保持「等待批准」状态**，不得落地。
++5. 调用 `stage-verifier`：**只出举证表**，不下最终 review 结论、不代用户签字。
++6. 调用 `memory-steward`：按 `edge/docs/refactor/HANDOFF-TEMPLATE.md` 写 handoff、
++   更新 `STAGE-STATE.md` 证据栏与更新时间（状态标「待用户确认」）、追加 `lessons.md`、
++   写入项目记忆与检视经验库。
++7. 输出收尾结论并**停下等待用户确认**；确认后才把状态改为 `done`。
+ 
+ 写入边界：只写 L3 / L4 资产与本阶段已确认范围内的实现文件；不写 L1、不写 spec 原文/图片。
+@@ -76,10 +85,12 @@ description: RK3588 边缘计算重构流程技能。重构阶段开工、收尾
+ 1. **L1 契约层任何文件**（清单见 `CODEBUDDY.md` §3、规则 01 §2）。
+    任何契约变更必须先给完整 diff（变更前后 + 影响面 + 受影响测试/Fake）并等用户明确批准。
+-2. `edge/docs/spec/**` 的原文与图片；`INDEX.md` 只做同步登记，不改原始资料。
++2. `edge/docs/spec/**` 的原文与图片；`edge/docs/spec/INDEX.md` 只做同步登记，不改原始资料。
+ 3. `.codebuddy/rules/编码规范.mdc`（用户 2026-11-09 修订版）全文。
+ 4. 阶段序列、验收项定义、`STAGE-STATE.md` 的状态；未经用户确认不得推进。
+-5. 配置期不得写 `edge/` 下任何 `.py`。
+-6. 不得借「按图实现」绕过三条已定裁决；不得把图中文字转录进代码或文档。
+-7. 不得静默改既有规则全文、既有测试断言、既有 Fake 契约。
++5. 配置期不得写 `edge/` 下任何 `.py`；缺 `test-report.md` 不得收尾。
++6. 不得借「按图实现」绕过三条已定裁决；不得把图中文字转录进代码或文档；
++   不得把图上方法名当 API。
++7. 不得静默改既有规则全文、既有测试断言、既有 Fake 契约；不得为让测试变绿而改被测代码。
++8. **不得代用户签署最终 review 结论**；最终结论只由用户本人签字。
+ 
+ ## 7. references 索引（只做索引，内容不在此重复）
+@@ -90,5 +101,5 @@ description: RK3588 边缘计算重构流程技能。重构阶段开工、收尾
+ | `references/glossary.md` | 术语定义与旧图 snake_case → L1 camelCase 映射 | 读旧图、做命名裁决时 |
+ | `references/diagram-index.md` | 按阶段 / 图类型检索 spec 资料的路由 | 需定位某张图或某段语义时 |
+-| `references/stage-catalog.md` | 10 个阶段的交付范围、依赖与验收项 | 开工、出验收证据、写 STAGE-STATE |
++| `references/stage-catalog.md` | 9 个阶段的交付范围、依赖、验收项与现有代码判定 | 开工、出验收证据、写 STAGE-STATE |
+ | `references/lessons.md` | 跨阶段可复用经验的模板与已有条目 | 收尾沉淀、下次开工前 |
+ 
+@@ -97,8 +108,12 @@ description: RK3588 边缘计算重构流程技能。重构阶段开工、收尾
+ ## 8. 命令与 agent 对应
+ 
+-| 命令 | 调用 agent | 职责 |
++| 命令 / 环节 | 调用 agent | 职责 |
+ | --- | --- | --- |
+-| `/stage` | `stage-opener`、`contract-guard` | 开工清单 + L1 基线 |
+-| `/stage-done` | `stage-verifier`、`contract-guard`、`memory-steward` | 验收结论 + L1 复核 + 沉淀 |
+-
+-四个 agent 定义在 `.codebuddy/agents/`，各自单一职责，不得互相代劳。
++| `/stage` 开工核对 | `stage-opener`、`contract-guard` | 开工清单 + L1 基线（只读） |
++| 步骤 1 | `spec-reader` | 读图读方案 → `stages/<id>/spec-digest.md` |
++| 步骤 2 | `implementer` | 只改开工清单白名单文件 |
++| 步骤 3 | `test-writer` | 测试代码 + `stages/<id>/test-report.md` |
++| **人工闸门** | **用户本人** | review 代码并签字；未签字不得进入下一步 |
++| 步骤 4 / `/stage-done` | `stage-verifier`、`contract-guard`、`memory-steward` | 只出举证 + L1 复核 + 沉淀 |
++
++七个 agent 定义在 `.codebuddy/agents/`，各自单一职责，不得互相代劳。
+
+===== CODEBUDDY.md =====
+diff --git "a/F:\\new zhineng\\.codebuddy\\_diffbak\\CODEBUDDY.md" "b/f:\\new zhineng\\CODEBUDDY.md"
+index 370a1c9..3f12dfa 100644
+--- "a/F:\\new zhineng\\.codebuddy\\_diffbak\\CODEBUDDY.md"	
++++ "b/f:\\new zhineng\\CODEBUDDY.md"	
+@@ -4,4 +4,17 @@
+ > 工作区根 = 本文件所在目录；代码根 = `edge/`；本文件属于 **L3 流程配置**。
+ 
++## 0. 路径基准（2026-11-10 已确认）
++
++- **PyCharm 项目根 = 工作区根 `f:\new zhineng`**：`.idea/` 位于该目录，
++  `new zhineng.iml` 的 content root 为 `$MODULE_DIR$`，`$PROJECT_DIR$` 即工作区根；
++  `edge.iml` 只是同一项目下的附加 module。因此 `CODEBUDDY.md` 与 `.codebuddy/` 放在工作区根即可生效。
++  若误把 `edge/` 单独打开成项目，配置不会生效，须重新打开 `f:\new zhineng`。
++- **全部配置中的相对路径一律以工作区根为基准**：spec 写 `edge/docs/spec/...`，
++  状态资产写 `edge/docs/refactor/...`，长资料写 `.codebuddy/skills/edge-refactor/references/...`。
++  禁止混用 `docs/spec/...`（以 `edge/` 为基准）与 `edge/docs/spec/...`。
++- 约定简写：`references/<file>` = `.codebuddy/skills/edge-refactor/references/<file>`；
++  `stages/<id>/` = `edge/docs/refactor/stages/<id>/`。
++- 唯一例外：`edge/docs/spec/INDEX.md` 表格内 `./...` 相对该索引文件自身（文件头已注明）。
++
+ ## 1. 目标
+ 
+@@ -52,11 +65,14 @@ Windows 先跑通，麒麟 Linux / RK3588 留骨架接口（`NotImplementedError
+ | 资产 | 职责 |
+ | --- | --- |
+-| `CODEBUDDY.md` | 本文件：目标、权威优先级、四层索引、阶段清单 |
++| `CODEBUDDY.md` | 本文件：目标、路径基准、权威优先级、四层索引、阶段清单 |
+ | `.codebuddy/rules/0*.mdc` | 4 条 always：命名裁决 / 编码硬约束 / 依赖目录 / 阶段门禁与记忆 |
+-| `.codebuddy/rules/ref_*.mdc` | Agent Requested 长资料路由，按需加载 |
++| `.codebuddy/rules/ref_*.mdc`、`test-visibility.mdc` | Agent Requested：资料路由、命名映射、测试透明化 |
+ | `.codebuddy/skills/edge-refactor/SKILL.md` | 阶段开工 / 收尾 / 沉淀工作流与 references 索引 |
+ | `.codebuddy/skills/edge-refactor/references/` | `decisions.md`、`glossary.md`、`diagram-index.md`、`stage-catalog.md`、`lessons.md` |
+ | `.codebuddy/commands/stage.md`、`stage-done.md` | 阶段开工 / 收尾命令 |
+-| `.codebuddy/agents/` | 4 个单一职责 agent：开工官 / 契约守卫 / 验收官 / 沉淀官 |
++| `.codebuddy/agents/` | 7 个单一职责 agent：开工官 / 契约守卫 / 验收官 / 沉淀官 / 资料消化官 / 实现官 / 测试官 |
++
++> always 规则共 **5 条**（新增 4 + 原有 `编码规范.mdc`），符合官方 3–5 条建议上限；
++> `test-visibility.mdc` 为 Agent Requested，其强制力由规则 04 的收尾门禁兜底。
+ 
+ ### L4 状态与记忆（按门禁写入）
+@@ -64,6 +80,7 @@ Windows 先跑通，麒麟 Linux / RK3588 留骨架接口（`NotImplementedError
+ | 资产 | 职责 |
+ | --- | --- |
+-| `edge/docs/refactor/STAGE-STATE.md` | 10 个阶段状态与验收项，初始全 `pending` |
++| `edge/docs/refactor/STAGE-STATE.md` | 9 个阶段状态与验收项，初始全 `pending` |
+ | `edge/docs/refactor/HANDOFF-TEMPLATE.md` | 阶段移交模板；每阶段收尾产出一份 handoff |
++| `edge/docs/refactor/stages/<id>/` | `spec-digest.md`（开工）+ `test-report.md`（收尾必交物） |
+ | `references/lessons.md` | 跨阶段可复用经验，不写一次性缺陷细节 |
+ | 项目记忆 `MEMORY.md` | 只存跨会话有效的裁决 / 反馈 / 项目背景 |
+@@ -71,8 +88,10 @@ Windows 先跑通，麒麟 Linux / RK3588 留骨架接口（`NotImplementedError
+ ## 4. 阶段清单
+ 
++**共 9 个阶段**：`0 / a / b / c1 / c2 / c3 / c4 / c5 / d`，顺序固定，不跳阶、不合并、不另起平行目录。
++
+ | 阶段 | 交付范围 | 一句话验收 |
+ | --- | --- | --- |
+-| `0` | `exceptions.py` + `platform/` 骨架 | 双开拿锁失败、EdgeError 抛捕、`PlatformFactory` 分支 |
+-| `a` | `interfaces/` 全部 | mypy 通过、零实现、注释覆盖、Fake 同步 |
++| `0` | 已有骨架：`exceptions.py` + `platform/` | 审读 + 契约核验 + 可举证单测；双开拿锁失败、`PlatformFactory` 分支 |
++| `a` | 已有骨架：`interfaces/` + `tests/fakes/` | 审读 + 契约一致性核验 + 可举证单测；Fake 与接口一致、mypy 通过 |
+ | `b` | `base/base_thread.py`、`base_service.py` | `interruptibleWait` 瞬断、join 超时返回、重复 stop 幂等 |
+ | `c1` | `infra/config_manager.py` | Fail-Fast、类型推断、`get(default=)` 两分支、双检锁 |
+@@ -83,12 +102,18 @@ Windows 先跑通，麒麟 Linux / RK3588 留骨架接口（`NotImplementedError
+ | `d` | `control/` + `app_init.py` + `main.py` | 事件分发、EventCache 补发/丢弃、停机严格串行、Windows 端到端 |
+ 
+-阶段完整定义与验收项见 `references/stage-catalog.md` 与 `STAGE-STATE.md`。
++0/a 的现有 27 个 `.py` 判定为**符合新契约的骨架（非旧代码）**，故目标是
++「先把已有代码看懂、按契约审一遍、补上能说清楚的单测」，**不盲目重写、不以已有实现直接补验收**；
++逐文件结论见 `references/stage-catalog.md` §0。阶段完整定义见 `references/stage-catalog.md` 与 `STAGE-STATE.md`。
+ 
+ ## 5. 门禁速记
+ 
+-- `/stage <阶段>`：只读开工核对，输出清单与基线；`/stage-done <阶段>`：验收 + 沉淀 + 状态推进。
++- 执行编排（四步 + 人工闸门）：`spec-reader` → `implementer` → `test-writer` →
++  **用户本人 review 代码并签字** → `stage-verifier`；详见 `commands/stage.md`。
++- 每阶段必交 `edge/docs/refactor/stages/<id>/test-report.md`（六节），缺件验收判红、不得收尾。
++- `stage-verifier` 只出举证表；**最终 review 结论由用户本人签字，任何 agent 不许代签**。
++- `/stage <阶段>`：只读开工核对；`/stage-done <阶段>`：验收 + 沉淀 + 状态推进。
+ - 未获用户确认不得把阶段改为 `in_progress` / `done`；本轮配置期状态全 `pending`。
+ - **硬要求：不得自动修改 L1 契约层；任何契约变更必须给 diff 并等用户批准。**
+ - 本轮配置期**禁止写入 `edge/` 下任何 `.py`**；只允许 `edge/docs/**` 的 `.md`。
+-- 写完/改完 Python 代码必须调用 `python-code-review` 检视一次并沉淀；检视项按阶段逐步收敛，不阻断当前阶段开工。
++- 写完/改完 Python 代码必须调用 `python-code-review` 检视一次并沉淀；检视项按阶段逐步收敛。
+ - 三条已定裁决（自检留空接口 / 非 UP 不启其他线程 / 去重不做且 seq 只填不用）见 `references/decisions.md`。
+
+===== edge\docs\refactor\HANDOFF-TEMPLATE.md =====
+diff --git "a/F:\\new zhineng\\.codebuddy\\_diffbak\\edge\\docs\\refactor\\HANDOFF-TEMPLATE.md" "b/f:\\new zhineng\\edge\\docs\\refactor\\HANDOFF-TEMPLATE.md"
+index 44b2546..745da0b 100644
+--- "a/F:\\new zhineng\\.codebuddy\\_diffbak\\edge\\docs\\refactor\\HANDOFF-TEMPLATE.md"	
++++ "b/f:\\new zhineng\\edge\\docs\\refactor\\HANDOFF-TEMPLATE.md"	
+@@ -3,10 +3,12 @@
+ > L4 模板。每阶段收尾复制本模板为 `edge/docs/refactor/HANDOFF-<阶段号>.md` 并逐项填写；
+ > 不允许留空字段，无内容写「无」；证据不足写「待补」并说明原因，不得编造。
++> 路径一律以工作区根为基准（`CODEBUDDY.md` §0）；`stages/<id>/` = `edge/docs/refactor/stages/<id>/`。
+ > 由 `memory-steward` 在 `/stage-done` 中产出；产出后不改 L1、不改 spec、不改验收项定义。
++> **必交物**：`stages/<id>/spec-digest.md` 与 `stages/<id>/test-report.md`；缺 `test-report.md` 验收判红、不得收尾。
+ 
+ ```markdown
+ # HANDOFF-<阶段号> — <阶段名称>
+ 
+-- **阶段**：<0 | a | b | c1 | c2 | c3 | c4 | c5 | d>
++- **阶段**：<0 | a | b | c1 | c2 | c3 | c4 | c5 | d>（共 9 个阶段）
+ - **日期**：<YYYY-MM-DD>
+ - **状态**：<待用户确认 / done / blocked>
+@@ -20,10 +22,13 @@
+ - 本阶段 spec 资料：<路径，来自 edge/docs/spec/INDEX.md；只列路径与图类型，不转录内容>
+ - 上一阶段 handoff：<路径 / 无>
++- 现有代码判定：<引用 stage-catalog.md §0；新骨架 / 旧代码及处置>
+ 
+-## 2. 交付文件清单
++## 2. 交付文件与必交物
+ 
+-| 文件 | 操作（新增 / 修改 / 只读核验） | 说明 |
+-| --- | --- | --- |
++| 文件 | 操作（新增 / 修改 / 只读核验） | 对应验收项编号 | 说明 |
++| --- | --- | --- | --- |
+ 
++- 必交物：`edge/docs/refactor/stages/<id>/spec-digest.md` <存在 / 缺失>
++- 必交物：`edge/docs/refactor/stages/<id>/test-report.md` <六节齐备 / 判红>
+ - 范围外文件：<无 / 列出并说明为何未动>
+ - 遗留 TODO 及归属阶段：<逐条；无则写「无」>
+@@ -31,9 +36,11 @@
+ ## 3. 验收项逐条证据
+ 
+-| 编号 | 验收项 | 证据（命令 + 输出 + 测试名） | 结论 |
++| 编号 | 验收项 | 证据（命令 + 输出 + 测试名 + test-report 对应用例） | 举证结果 |
+ | --- | --- | --- | --- |
+ 
+ - 工具链：`ruff` <结果> ｜ `mypy`（3.9 strict）<结果> ｜ `pytest` + 契约测试 <结果>
++- `test-report.md` 六节：<齐备 / 缺节编号>；第 ⑥ 节未覆盖项摘要：<内容>
+ - `python-code-review` 报告：<结论 + 跨阶段遗留项及归属阶段>
++- 测试约定核验：<验收项编号注释 / 无空洞断言 / 无为变绿而改被测代码>
+ 
+ ## 4. L1 契约层
+@@ -61,5 +68,5 @@
+ ## 7. 沉淀记录
+ 
+-- `STAGE-STATE.md` 更新：<证据栏 / 时间 / 待确认状态>
++- `edge/docs/refactor/STAGE-STATE.md` 更新：<证据栏 / test-report 路径 / 时间 / 待确认状态>
+ - `references/lessons.md` 条目号：<L-xx / 无>
+ - 项目记忆：<topic 文件名 + MEMORY.md 索引行 / 无>
+@@ -73,9 +80,12 @@
+ - 特别注意：<边界 / 已知坑 / 未批准事项>
+ 
+-## 9. 用户确认
++## 9. 用户本人 review 与签字
+ 
++- 人工闸门位置：`test-writer` 之后、`stage-verifier` 之前
++- 代码 review 签字：<已签署 / 待签署>（任何 agent 不得代签）
++- **最终 review 结论：<留空，由用户本人填写>**
+ - [ ] 配置/交付范围确认
+-- [ ] 验收结论确认
++- [ ] 举证结论确认
+ - [ ] 状态推进确认（<阶段号> → `done`）
+-- 确认人 / 日期：<待填写>
++- 确认人 / 日期：<由用户本人填写>
+ ```
+
+===== edge\docs\refactor\STAGE-STATE.md =====
+diff --git "a/F:\\new zhineng\\.codebuddy\\_diffbak\\edge\\docs\\refactor\\STAGE-STATE.md" "b/f:\\new zhineng\\edge\\docs\\refactor\\STAGE-STATE.md"
+index a9f3714..0ab2a8b 100644
+--- "a/F:\\new zhineng\\.codebuddy\\_diffbak\\edge\\docs\\refactor\\STAGE-STATE.md"	
++++ "b/f:\\new zhineng\\edge\\docs\\refactor\\STAGE-STATE.md"	
+@@ -2,6 +2,7 @@
+ 
+ > L4 运行态资产。本文件只记录**当前状态与证据**；阶段定义与验收项以 L1
+-> `edge/docs/spec/整体重构方案.txt` §5 与 L3 `references/stage-catalog.md` 为准。
+-> 生成日期：2026-11-10（流程配置期）。**全部阶段初始为 `pending`，未开工。**
++> `edge/docs/spec/整体重构方案.txt` §5 与 `.codebuddy/skills/edge-refactor/references/stage-catalog.md` 为准。
++> 路径一律以工作区根为基准（`CODEBUDDY.md` §0）；`stages/<id>/` = `edge/docs/refactor/stages/<id>/`。
++> 生成日期：2026-11-10（流程配置期）。**共 9 个阶段，全部初始为 `pending`，未开工。**
+ > 配置期禁止写 `edge/` 下任何 `.py`；状态推进必须用户确认（规则 04）。
+ 
+@@ -12,97 +13,106 @@
+ | `pending` | 未开工（初始态） | 初始生成 |
+ | `in_progress` | 用户已确认开工 | 用户确认后由 `/stage` 记录 |
+-| `done` | 验收全通过且沉淀完成 | 用户确认后由 `/stage-done` 记录 |
++| `done` | 验收全通过、用户本人签字、沉淀完成 | 用户确认后由 `/stage-done` 记录 |
+ | `blocked` | 阻塞，等待用户裁决 | 记录原因 + 等待用户 |
+ 
+ **当前阶段**：`0`（`pending`，待用户确认开工）
+ **前置门禁**：L1 契约层零自动变更；任何契约变更必须给 diff 并等用户批准。
+-
+-## 2. 阶段总表
+-
+-| 阶段 | 交付范围 | 状态 | 验收项数 | 证据 | 最后更新 |
+-| --- | --- | --- | --- | --- | --- |
+-| `0` | `exceptions.py` + `platform/` 骨架 | `pending` | 3 | — | 2026-11-10 |
+-| `a` | `interfaces/` 全部 + Fakes | `pending` | 4 | — | 2026-11-10 |
+-| `b` | `base/base_thread.py`、`base_service.py` | `pending` | 3 | — | 2026-11-10 |
+-| `c1` | `infra/config_manager.py` | `pending` | 4 | — | 2026-11-10 |
+-| `c2` | `infra/log_manager.py` | `pending` | 4 | — | 2026-11-10 |
+-| `c3` | `modules/tcp/` 五个文件 | `pending` | 5 | — | 2026-11-10 |
+-| `c4` | `modules/usb/` 三个文件 | `pending` | 4 | — | 2026-11-10 |
+-| `c5` | `modules/recognition/` 四个文件 | `pending` | 4 | — | 2026-11-10 |
+-| `d` | `control/` + `app_init.py` + `main.py` | `pending` | 4 | — | 2026-11-10 |
+-
+-> 说明：`0 / a / b` 在工作区已有部分实现与契约测试，但**本文件按用户要求统一初始化为 `pending`**；
+-> 已有文件不等于已验收。各阶段开工时由 `stage-verifier` 按下列验收项逐条核验后再定状态。
++**必交物**：`edge/docs/refactor/stages/<id>/test-report.md`（六节）；缺件验收判红、不得收尾。
++**人工闸门**：用户本人 review 代码并签字；`stage-verifier` 只举证，不代签。
++
++## 2. 阶段总表（共 9 个阶段）
++
++| 阶段 | 交付范围 | 状态 | 验收项编号 | 必交物 | 证据 | 最后更新 |
++| --- | --- | --- | --- | --- | --- | --- |
++| `0` | 已有骨架：`exceptions.py` + `platform/` | `pending` | `0-1`~`0-4` | `stages/0/test-report.md` | — | 2026-11-10 |
++| `a` | 已有骨架：`interfaces/` + `tests/fakes/` | `pending` | `a-1`~`a-4` | `stages/a/test-report.md` | — | 2026-11-10 |
++| `b` | `base/base_thread.py`、`base_service.py` | `pending` | `b-1`~`b-3` | `stages/b/test-report.md` | — | 2026-11-10 |
++| `c1` | `infra/config_manager.py` | `pending` | `c1-1`~`c1-4` | `stages/c1/test-report.md` | — | 2026-11-10 |
++| `c2` | `infra/log_manager.py` | `pending` | `c2-1`~`c2-4` | `stages/c2/test-report.md` | — | 2026-11-10 |
++| `c3` | `modules/tcp/` 五个文件 | `pending` | `c3-1`~`c3-5` | `stages/c3/test-report.md` | — | 2026-11-10 |
++| `c4` | `modules/usb/` 三个文件 | `pending` | `c4-1`~`c4-4` | `stages/c4/test-report.md` | — | 2026-11-10 |
++| `c5` | `modules/recognition/` 四个文件 | `pending` | `c5-1`~`c5-4` | `stages/c5/test-report.md` | — | 2026-11-10 |
++| `d` | `control/` + `app_init.py` + `main.py` | `pending` | `d-1`~`d-4` | `stages/d/test-report.md` | — | 2026-11-10 |
++
++> 说明：`0 / a` 在工作区已有实现与契约测试，但**已有文件不等于已验收**。
++> 2026-11-10 判定 27 个 `.py` 为「符合新契约的骨架（非旧代码）」，故 0/a 目标是
++> 「先把已有代码看懂、按契约审一遍、补上能说清楚的单测」，**不盲目重写、不以已有实现直接补验收**；
++> 逐文件结论见 `references/stage-catalog.md` §0。
+ 
+ ## 3. 验收项明细（全部 `[ ]`）
+ 
+-### 阶段 0 — 异常与平台骨架
++### 阶段 0 — 已有骨架：审读 + 契约核验 + 补可举证单测
+ 
+-- [ ] 双开时拿锁失败并立即退出（Windows `msvcrt.locking`）
+-- [ ] `EdgeError` 抛出 / 捕获与日志格式正确，`code.name` 可扫描
+-- [ ] `PlatformFactory` Windows 返回 `WindowsAdapter`；Linux 分支 `NotImplementedError` + TODO
++- [ ] `0-1` 逐文件审读结论齐备，明确「新骨架 / 需修正」及依据
++- [ ] `0-2` `EdgeError` 抛出 / 捕获与 `code.name` 日志格式正确
++- [ ] `0-3` `PlatformFactory` Windows 返回 `WindowsAdapter`；Linux 分支 `NotImplementedError` + TODO
++- [ ] `0-4` 双开取锁失败并立即退出；「进程锁无调用方」列入未覆盖项及原因
+ 
+-### 阶段 a — 接口契约
++### 阶段 a — 已有骨架：审读 + 契约一致性核验 + 补可举证单测
+ 
+-- [ ] mypy（3.9 strict）通过
+-- [ ] `interfaces/` 零实现、零业务 import
+-- [ ] 全部 camelCase；文件顶部唯一模块 docstring，其余 `##` 注释覆盖
+-- [ ] `tests/fakes/` 与接口契约一致，契约测试跑通
++- [ ] `a-1` `interfaces/` 零实现、零业务 import、全 camelCase、Doxygen 注释覆盖
++- [ ] `a-2` 8 个 Fake 与 8 个接口签名逐一对齐；`fake_logger.py` 的 `FrameData` 断裂有结论与处置
++- [ ] `a-3` 契约测试可收集、可执行、通过；mypy（3.9 strict）通过
++- [ ] `a-4` 9 处 Fake 字段类型标注缺口有结论（补齐或列入未覆盖项并说明）
+ 
+ ### 阶段 b — 通用生命周期
+ 
+-- [ ] Demo 子类验证 `stop()` 瞬间打断 `interruptibleWait`
+-- [ ] join 超时强制返回
+-- [ ] 重复 `stop` 幂等；`BaseService` 三件套可多态
++- [ ] `b-1` `stop()` 瞬间打断 `interruptibleWait`
++- [ ] `b-2` join 超时强制返回
++- [ ] `b-3` 重复 `stop` 幂等；`BaseService` 三件套可多态
+ 
+ ### 阶段 c1 — 配置管理
+ 
+-- [ ] Fail-Fast：文件缺失抛 `EdgeError(CONFIG, ...)`
+-- [ ] 类型推断 int / float / bool / list / str
+-- [ ] `get(section, key, default=None)` 两分支（抛异常 / 返回默认并记 info）
+-- [ ] `instance()` 双检锁，且普通构造可用于测试
++- [ ] `c1-1` Fail-Fast：文件缺失抛 `EdgeError(CONFIG, ...)`
++- [ ] `c1-2` 类型推断 int / float / bool / list / str
++- [ ] `c1-3` `get(section, key, default=None)` 两分支
++- [ ] `c1-4` `instance()` 双检锁，且普通构造可用于测试
+ 
+ ### 阶段 c2 — 日志管理
+ 
+-- [ ] 唯一 BlockingQueue 异步消费，对外仅 `rx/tx/info/error`
+-- [ ] 跨天 / 超大小滚动 + 磁盘不足清理
+-- [ ] 停机清空队列并关闭 Writer 句柄
+-- [ ] `error(exception=e)` 自动附堆栈
++- [ ] `c2-1` 唯一 BlockingQueue 异步消费，对外仅 `rx/tx/info/error`
++- [ ] `c2-2` 跨天 / 超大小滚动 + 磁盘不足清理
++- [ ] `c2-3` 停机清空队列并关闭 Writer 句柄
++- [ ] `c2-4` `error(exception=e)` 自动附堆栈
+ 
+ ### 阶段 c3 — TCP 模块
+ 
+-- [ ] 退避序列 `[1,2,4,8,16,30]` 构造注入且 `interruptibleWait` 可打断
+-- [ ] 心跳失败去重（非 UP 直接返回 `False`）
+-- [ ] 解码半包 / 粘包 + 超长帧处理
+-- [ ] `transitionTo(state, reason, source) -> bool` 并发宣告 DOWN 靠返回值去重
+-- [ ] `FakeSocket` 集成联调通过；`tcp/` 无禁词
++- [ ] `c3-1` 退避 `[1,2,4,8,16,30]` 构造注入且 `interruptibleWait` 可打断
++- [ ] `c3-2` 心跳失败去重（非 UP 直接返回 `False`）
++- [ ] `c3-3` 解码半包 / 粘包 + 超长帧处理
++- [ ] `c3-4` `transitionTo(state, reason, source) -> bool` 并发宣告 DOWN 靠返回值去重
++- [ ] `c3-5` `FakeSocket` 集成联调通过；`tcp/` 无禁词
+ 
+ ### 阶段 c4 — USB 采集模块
+ 
+-- [ ] 4 线程并发拉起并立即返回（前置校验：已初始化且未采集中）
+-- [ ] 双路取图落盘
+-- [ ] 滚动删除（超 30% 删旧）
+-- [ ] 成功 / 失败回调互不影响；`FakeCamera` 联调通过
++- [ ] `c4-1` 4 线程并发拉起并立即返回（前置校验：已初始化且未采集中）
++- [ ] `c4-2` 双路取图落盘
++- [ ] `c4-3` 滚动删除（超 30% 删旧）
++- [ ] `c4-4` 成功 / 失败回调互不影响；`FakeCamera` 联调通过
+ 
+ ### 阶段 c5 — 识别模块
+ 
+-- [ ] 推理 3s 超时（构造注入）
+-- [ ] 空间归集 + 查表校验 + 组装 ack
+-- [ ] 回调上抛，`trigger()` 立即返回
+-- [ ] `FakeEngine` 联调通过；模型仅 `loadModel` 一次
++- [ ] `c5-1` 模型仅 `loadModel` 一次、`trigger` 立即返回
++- [ ] `c5-2` 推理 3s 超时（构造注入）
++- [ ] `c5-3` 空间归集 + 查表校验 + 组装 ack
++- [ ] `c5-4` 回调上抛；纯函数留在 `recognition_utils.py`
+ 
+ ### 阶段 d — 控制、装配与端到端
+ 
+-- [ ] 事件分发按注入的 `asyncHandlers` 键（门面不感知业务字符串）
+-- [ ] `EventCache` 按 `event_cache.enabled` 补发 / 丢弃；`seq` 只填不用
+-- [ ] 一键停机严格串行 `USB → 识别 → TCP → 日志`；进程锁生效
+-- [ ] Windows 端到端跑通
++- [ ] `d-1` 事件分发按注入的 `asyncHandlers` 键（门面不感知业务字符串）
++- [ ] `d-2` `EventCache` 按 `event_cache.enabled` 补发 / 丢弃；`seq` 只填不用
++- [ ] `d-3` 一键停机严格串行 `USB → 识别 → TCP → 日志`；进程锁生效
++- [ ] `d-4` Windows 端到端跑通
+ 
+ ## 4. 全局门禁（每阶段收尾复核）
+ 
+-- [ ] `ruff` / `mypy` / `pytest` + 契约测试证据齐备
++- [ ] `edge/docs/refactor/stages/<id>/spec-digest.md` 已由 `spec-reader` 产出
++- [ ] **`edge/docs/refactor/stages/<id>/test-report.md` 六节齐备（缺件一律判红、不得收尾）**
++- [ ] 测试函数上方有验收项编号注释；无空洞断言；无为变绿而改被测代码
++- [ ] **用户本人已 review 代码并签字**（`stage-verifier` 只举证，不许代签）
++- [ ] `ruff` / `mypy`（3.9 strict） / `pytest` + 契约测试证据齐备
+ - [ ] 写过或改过 Python → `python-code-review` 检视报告一次
+ - [ ] L1 契约层零自动变更（`contract-guard` 结论）
+-- [ ] D-01 自检留空接口 / D-02 非 UP 不启其他线程 / D-03 去重不做且 seq 只填不用，逐条已遵守
++- [ ] D-01 / D-02 / D-03 逐条已遵守
+ - [ ] handoff 已产出、`lessons.md` 与项目记忆已按协议沉淀
+ 
+@@ -111,10 +121,11 @@
+ | 日期 | 阶段 | 事件 | 结论 | 用户确认 |
+ | --- | --- | --- | --- | --- |
+-| 2026-11-10 | 全部 | 流程配置初始化，状态全 `pending` | 待用户确认配置清单 | 待确认 |
++| 2026-11-10 | 全部 | 流程配置初始化，9 阶段全 `pending` | 待用户确认配置清单 | 待确认 |
++| 2026-11-10 | 0 / a | 27 个 `.py` 契约判定：新骨架、非旧代码 | 目标改为审读 + 契约核验 + 补可举证单测 | 待确认 |
+ 
+ ## 6. 使用协议
+ 
+ - 本文件由 `/stage`（只读核对）与 `/stage-done`（写入证据）驱动；状态由用户确认后推进。
+-- 验收项措辞变更 = 阶段定义变更，须走 L1 diff + 用户批准；不得静默修改。
+-- 证据栏只记可复核内容（命令、输出、测试名、handoff 路径），不写「应该通过」。
++- 验收项编号与措辞变更 = 阶段定义变更，须走 L1 diff + 用户批准；不得静默修改。
++- 证据栏只记可复核内容（命令、输出、测试名、`test-report.md` 路径），不写「应该通过」。
+ - 阻塞时状态写 `blocked` 并在 §5 记录原因，等待用户裁决。
+
+===== edge\docs\spec\INDEX.md =====
+diff --git "a/F:\\new zhineng\\.codebuddy\\_diffbak\\edge\\docs\\spec\\INDEX.md" "b/f:\\new zhineng\\edge\\docs\\spec\\INDEX.md"
+index 280d7d6..46fc44d 100644
+--- "a/F:\\new zhineng\\.codebuddy\\_diffbak\\edge\\docs\\spec\\INDEX.md"	
++++ "b/f:\\new zhineng\\edge\\docs\\spec\\INDEX.md"	
+@@ -2,5 +2,6 @@
+ 
+ > 本文件由重构流程配置生成，只做登记，不改动任何 spec 原文；属于 **L3 索引资产**。
+-> 路径均相对 `edge/docs/spec/`；权威优先级与裁决口径见 `CODEBUDDY.md` 与规则 `01_naming_authority.mdc`（NAMING_AUTHORITY）。
++> 全项目路径基准为工作区根，其他配置一律写 `edge/docs/spec/...`；**本表 `./...` 是唯一例外，相对本文件自身**。
++> 权威优先级与裁决口径见 `CODEBUDDY.md` §0/§2 与规则 `01_naming_authority.mdc`（NAMING_AUTHORITY）。
+ > 图类型取值：定稿文本 / 类图 / 流程图 / 时序图 / 整合类图 / 阶段时序 / PNG 快照。
+ > 对应阶段一律指方案 A 的**实施阶段** `0 / a / b / c1 / c2 / c3 / c4 / c5 / d`。
+
+===== .codebuddy\skills\edge-refactor\references\lessons.md =====
+--- a/.codebuddy/skills/edge-refactor/references/lessons.md
++++ b/.codebuddy/skills/edge-refactor/references/lessons.md
+@@ -37,4 +37,8 @@
+ - 用户明确：**不得自动修改 L1 契约层，契约变更必须给 diff 并等批准**（已固化于规则 01/04、SKILL.md §6）。
+ - 用户明确：按阶段逐步递进，检视项不要求一次清零（已固化于规则 04 §2）。
+ - 用户明确：写完/改完 Python 代码必须检视并沉淀（已固化于规则 02 §7）。
+ - 三条已定裁决 D-01 / D-02 / D-03 见 `decisions.md`。
++- 2026-11-10 配置修正：统一为 9 阶段；27 个 `.py` 判定为「符合新契约的骨架，非旧代码」，
++  0/a 目标改为审读 + 契约核验 + 补可举证单测（不盲目重写、不直接补验收）；
++  新增必交物 `edge/docs/refactor/stages/<id>/test-report.md` 与「用户本人 review 签字」人工闸门；
++  路径基准统一为工作区根。
+

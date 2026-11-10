@@ -1,0 +1,43 @@
+---
+description: Agent Requested：阅读 docs/spec 旧图遇到 snake_case 标识符、旧类名或旧分层概念，需要映射到方案 A 落地名称时加载
+alwaysApply: false
+enabled: true
+---
+
+# 按需：旧图标识符映射路由
+
+> 完整映射表在 `.codebuddy/skills/edge-refactor/references/glossary.md`；
+> 裁决原则在 always 规则 `01_naming_authority.mdc`（NAMING_AUTHORITY）。本规则只做路由。
+
+## 何时加载
+
+- 读 `edge/docs/spec/**/*.txt` 的 mermaid / PlantUML 源码，准备把它转成实现思路。
+- 评审时有人说"按图上的 `xxx_yyy` 命名"，需要给出裁决依据。
+- 归档 handoff 的「遗留与裁决」段，需要列出图与 L1 的差异。
+
+## 三条速记
+
+1. **旧图标识符不是接口定义**：L1 `整体重构方案.txt` §3 的接口方法表是唯一裁决源。
+2. **不列表的按 camelCase 转换**，并满足方法名全局不重复、文件名全局唯一。
+3. **不改图、不改 L1**：差异只记录，不"顺手修正"；涉及契约变更走 diff + 用户批准。
+
+## 高频对照（完整表见 glossary.md）
+
+| 旧图 | 落地 | 备注 |
+| --- | --- | --- |
+| `getValue(section, key)` | `get(section, key, default=None)` | L1 接口表 |
+| `getInstance()` | `instance()` | 类内双检锁，不用单例基类 |
+| `ConfigManager` / `FileConfig` | `IniConfigManager` | `infra/config_manager.py` |
+| `route_signal` / `send_frame` | `routeSignal` / `sendFrame` | 前者只认注入的 `asyncHandlers` 键 |
+| `on_capture_success` / `on_recognition_result` | `onCaptureSuccess` / `onRecognitionResult` | L1 接口表 |
+| `_split_frames` / `_decode_and_parse` | `splitFrames` / `decodeAndParse` | 私有方法同样 camelCase |
+| `selfCheck` / `SelfChecker.check_all` | 留空接口 + TODO | 裁决 D-01 |
+| `PendingRequest` 重发 / 补发去重 | 不实现 | 裁决 D-03 |
+
+## 概念差异（易踩坑）
+
+- 旧图的「能力降级」「自检线程」在方案 A 中无对应交付；按 D-01 只留空接口。
+- 旧图在 DOWN/CONNECTING 阶段仍出现心跳、解码线程；按 D-02 只有 UP 后才启动。
+- 旧图把 `EventCache` 画成带 `seq` 去重的补发队列；按 D-03 去重不做，`seq` 只填不用。
+- 旧图 `IConfig` 有 `getLogDir/getMaxFileSize/getTcpPort/getReconnectBackoff` 等专用 getter；
+  L1 只保留通用 `get(section, key, default=None)`。

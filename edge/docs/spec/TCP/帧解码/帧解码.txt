@@ -1,0 +1,186 @@
+||||||||||||||||||||||||||||||||||||||||类图|||||||||||||||||||||||||||||||||||||||||||
+
+
+classDiagram
+direction TB
+
+class Main {
+  +main() 进程入口，仅负责拉起EdgeControl
+  +shutdown() 进程退出，触发系统优雅停机
+}
+
+class EdgeControl {
+  -tcpLayer 通信门面，所有通信指令的唯一下发出口
+  -logger 全局日志接口
+  +startSystem() 系统启动入口
+  +stopSystem() 系统停机入口
+  +route_signal(signal) 接收并路由解码成功后的业务信号
+  +handle_frame_error(exception) 接收并处理业务坏帧异常
+  +handle_link_down(reason) 接收网络断线异常，触发重连
+}
+
+class SignalSink {
+  <<interface>>
+  +onSignalDecoded(signal) 正常业务信号上抛接口
+  +onFrameError(exception) 帧解析异常上抛接口
+  +onLinkDown(reason) 网络断线上抛接口
+}
+
+class TcpControlLayer {
+  -socket 唯一网络套接字 (物理层接口)
+  -linkState 链路状态枚举 (DOWN/CONNECTING/UP)
+  -signalSink 注入的解耦出口
+  -decodeThread 组合持有的帧解码线程
+  +startDecode() 透传启动指令至 decodeThread.startDecode()
+  +stopDecode() 透传停止指令至 decodeThread.stopDecode()
+  +onSignalDecoded(signal) 接收子线程信号，转发给 signalSink
+  +onFrameError(exception) 接收子线程异常，转发给 signalSink
+  +onLinkDown(reason) 接收子线程断网，转发给 signalSink
+}
+
+class DecodeThread {
+  <<Thread 线程>>
+  -isThreadRunning 线程运行标志
+  -stopEvent 停止事件，用于打断阻塞的 recv
+  -recvBuffer 字节缓冲区（处理半包/粘包）
+  -maxFrameSize 单帧最大字节数 (从IConfig读取)
+  -tcpLayer 门面引用，用于逐级上报信号或异常
+  -logger ILogger 依赖注入，用于记录正常/异常日志
+  -config IConfig 依赖注入，用于读取系统配置
+  +startDecode() 幂等启动：调config读参数，建线程
+  +stopDecode() 幂等停止：置标志、打断等待
+  +run() 核心主循环：阻塞recv接收数据
+  -_split_frames() 处理粘包/半包，切出完整帧
+  -_decode_and_parse() 解析JSON；成功调logger.info()，失败调logger.error()
+  -_report_signal() 组装Signal并调 tcpLayer.onSignalDecoded()
+  -_report_error() 调 tcpLayer.onFrameError() 逐级抛异常
+}
+
+class Socket {
+  <<物理接口>>
+  +recv() 阻塞接收网络字节流
+  +send() 发送字节流
+}
+
+Main --> EdgeControl : 1. 调度
+EdgeControl ..|> SignalSink : 实现接口
+EdgeControl --> TcpControlLayer : 2. 启停
+TcpControlLayer *-- DecodeThread : 组合持有
+TcpControlLayer --> SignalSink : 依赖 / 注入
+DecodeThread ..> TcpControlLayer : 上报信号 / 异常 / 断线
+DecodeThread ..> Socket : 调用 recv()
+
+
+||||||||||||||||||||||||||||||||||||||||流程图|||||||||||||||||||||||||||||||||||||||||||
+
+flowchart TD
+    NodeStart(["入口: 收到门面 TcpControlLayer 的启动指令"]) --> Init["初始化: isThreadRunning = true, 建线程<br/>调 IConfig 读取 maxFrameSize"]
+    Init --> LoopStart{"【外层: 网络接收】<br/>run() 主循环: isThreadRunning?"}
+    
+    LoopStart -->|否| NodeEnd(["线程退出, 资源释放"])
+    
+    %% 1. 网络接收
+    LoopStart -->|是| Recv["调用 socket.recv(buf): 阻塞接收字节"]
+    
+    Recv --> CheckRecv{"网络状态判断"}
+    
+    %% 致命异常：断网
+    CheckRecv -->|"异常 (ConnectionReset等)"| LogErrIO["调 logger.error() 记录断网异常"]
+    LogErrIO --> ThrowIO["调 tcpLayer.onLinkDown(异常)<br/>逐级抛异常至 EdgeControl"]
+    ThrowIO --> NodeEnd
+    
+    CheckRecv -->|"返回 0 (对端正常关闭)"| ThrowIO
+    CheckRecv -->|"返回 n > 0 (收到数据)"| AppendBuf["将新字节追加到 recvBuffer"]
+    
+    %% 2. 拆包解帧 (内层循环)
+    AppendBuf --> InnerLoopStart{"【内层: 拆包解帧】<br/>_split_frames():<br/>缓冲区有完整帧吗?"}
+    
+    InnerLoopStart -->|否 (只剩半包)| LoopStart
+    
+    InnerLoopStart -->|是| CutFrame["切出完整帧"]
+    CutFrame --> CheckSize{"单帧超过 maxFrameSize?"}
+    
+    %% 非致命异常：超长帧
+    CheckSize -->|"是 (超长异常)"| LogErrSize["调 logger.error() 记录超长帧异常"]
+    LogErrSize --> ThrowSize["调 tcpLayer.onFrameError(异常)<br/>逐级抛异常至 EdgeControl"]
+    ThrowSize --> InnerLoopStart
+    
+    %% 3. 解析 JSON
+    CheckSize -->|"否 (长度合法)"| Decode["调用 _decode_and_parse()"]
+    Decode --> CheckJson{"JSON 解析成功?"}
+    
+    %% 非致命异常：解析失败
+    CheckJson -->|"否 (格式非法/缺字段)"| LogErrJson["调 logger.error() 记录解析异常"]
+    LogErrJson --> ThrowJson["调 tcpLayer.onFrameError(异常)<br/>逐级抛异常至 EdgeControl"]
+    ThrowJson --> InnerLoopStart
+    
+    %% 正常成功
+    CheckJson -->|"是"| LogInfo["调 logger.info() 记录正常解析"]
+    LogInfo --> EmitSignal["组装成 Signal 对象<br/>调 SignalSink 上抛（非异常）"]
+    EmitSignal --> InnerLoopStart
+
+
+
+||||||||||||||||||||||||||||||||||||||||时序图|||||||||||||||||||||||||||||||||||||||||||
+
+
+sequenceDiagram
+    autonumber
+    participant Main as 主函数(Main)
+    participant Edge as EdgeControl(大控制层)
+    participant SINK as SignalSink
+    participant TCL as TcpControlLayer(门面/Controller)
+    participant DT as DecodeThread(帧解码线程)
+    participant SOCK as 物理网络(Socket)<br/>【物理通信接口处】
+
+    Note over Main, SOCK: ===== 1. 系统启动与解码线程初始化 =====
+    Main->>Edge: main() 内部调用 startSystem()
+    Edge->>SINK: 启动信号调度
+    SINK->>TCL: 实例化并启动 Controller
+    Edge->>TCL: 下发 startDecode() 指令
+    TCL->>DT: 实例化并 start() 线程
+    activate DT
+    DT->>DT: 调 IConfig.getValue() 读取 maxFrameSize
+
+    Note over Main, SOCK: ===== 2. 正常运行与帧解析循环 =====
+    loop 运行中 [主循环]
+        DT->>SOCK: socket.recv() (阻塞等待数据)
+        SOCK-->>DT: 返回 byte_data (n > 0)
+        
+        DT->>DT: 追加至缓冲区并执行 _split_frames()
+        
+        opt 成功切出完整帧
+            DT->>DT: 执行 _decode_and_parse(frame)
+            
+            alt 解析成功 (合法 JSON/字段完整)
+                DT->>DT: 调 LogManager.info() 记录正常日志
+                DT->>DT: 组装成 Signal 数据对象
+                DT->>TCL: 回调门面 onSignalDecoded(signal)
+                TCL->>SINK: 转发接口 onSignalDecoded(signal)
+                SINK->>Edge: 路由至大控制层 route_signal(signal)
+                
+            else 业务异常 (非JSON/超长帧)
+                DT->>DT: 调 LogManager.error() 记录异常
+                DT->>TCL: 回调门面 onFrameError(异常对象)
+                TCL->>SINK: 转发接口 onFrameError(异常对象)
+                SINK->>Edge: 上报业务帧异常
+                Note right of DT: 丢弃当前坏帧，继续解下一帧
+            end
+        end
+    end
+
+    Note over Main, SOCK: ===== 3. 运行中网络异常 =====
+    DT->>SOCK: socket.recv()
+    SOCK-->>DT: 返回 0 (对端关闭) 或 抛出 ConnectionResetError
+    DT->>DT: 调 LogManager.error() 记录断网异常
+    DT->>TCL: 回调门面 onLinkDown(reason)
+    TCL->>SINK: 转发接口 onLinkDown(reason)
+    SINK->>Edge: 触发大控制层断线重连逻辑
+    Note over DT: 抛出致命异常，打破 recv 循环
+
+    Note over Main, SOCK: ===== 4. 系统停机 =====
+    Main->>Edge: stopSystem()
+    Edge->>TCL: 下发 stopDecode() 指令
+    TCL->>DT: stopDecode() (置 isThreadRunning=false, 强行打断阻塞)
+    deactivate DT
+    Note over DT: 线程退出循环，释放资源

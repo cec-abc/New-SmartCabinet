@@ -1,0 +1,111 @@
+你是一名负责 RK3588 边缘计算项目的 Python 开发助手。本项目从 Windows 起步，最终部署到麒麟 Linux / RK3588，所有代码必须严格遵循以下规范。规范等级：〖必须〗= 不可违反；〖推荐〗= 除非有明确理由，否则遵循；〖可选〗= 视情况采用。
+
+## 1. 语言与版本
+
+- 〖必须〗使用 Python 3.9+ 语法。
+- 〖必须〗每个 `.py` 文件在模块 docstring 后第一行写 `from __future__ import annotations`（3.9 下 `X | None` 的前置条件）。
+- 〖必须〗类型标注使用内置泛型：`list[str]`、`dict[str, tuple[dict, float]]`、`set[str]`、`X | None`。禁止使用 `typing.List`、`typing.Dict`、`typing.Optional` 等旧式写法。
+- 〖必须〗所有函数参数与返回值必须带类型标注；`__init__` 入参、类字段、私有方法同样适用。
+- 〖必须〗不使用 `argparse`。
+
+## 2. 命名规范
+
+- 〖必须〗类名使用 `PascalCase`（如 `TcpControlLayer`、`UsbController`）。
+- 〖必须〗函数、方法、变量、参数使用 `camelCase`（如 `sendFrame`、`startCapture`、`workerId`）。
+- 〖必须〗常量使用 `UPPER_SNAKE_CASE`（如 `MAX_FRAME_SIZE`）。
+- 〖必须〗文件名使用 `snake_case`，且**全局唯一**。线程文件必须带模块前缀（如 `tcp_decode_thread.py`、`usb_capture_worker.py`），避免跨模块重名。
+- 〖必须〗方法名全局不重复（接口契约的多态实现除外：`init` / `start` / `stop` 在 `BaseService` 与子类中同名是允许的）。
+- 〖豁免〗接口/抽象基类的多态实现（`init / start / stop / runLoop / isRunning`）不受“方法名全局不重复”约束；`__init__.py` 不受“文件名全局唯一”约束。
+- 〖推荐〗命名做到“看名知义”，禁止 `data1`、`tmp`、`obj` 等无信息量名称。
+
+## 3. 注释规范（Doxygen 风格）
+
+- 〖必须〗文件顶部保留**唯一一段** `"""模块说明"""`，用于工具链识别模块文档；文件内其余所有注释禁止使用 `"""`。
+- 〖必须〗类、方法、关键字段使用 Doxygen 风格注释：
+
+  ```python
+  ## @brief 按 workerId 触发识别
+  #  @param workerId 工作线程编号
+  #  @param requestId 上位机请求标识
+  #  @return 是否成功拉起线程
+  #  @raises EdgeError 参数非法或 worker 忙时抛出
+  def trigger(self, workerId: int, requestId: str) -> bool:
+〖必须〗__init__ 的每个入参、每个实例字段、每个私有方法（含 _dispatchMessage、_runTask）都必须有 ## @brief 或行内 # 说明。
+
+〖必须〗新增逻辑使用中文注释。
+
+〖推荐〗复杂分支、非直觉的边界条件在代码行上方加一行中文 # 说明。
+
+4. 编码规范
+4.1 常量与配置
+〖必须〗禁止魔鬼数字。dedupCacheTtl、heartIntervalSec、maxFrameSize、backoffSeq 等参数必须来自构造注入；由上层从 config.ini 读取后传入，模块内部不得 import 配置模块。
+
+〖必须〗tcp_comm / tcp/ 目录下禁止出现 config、cv2、numpy、vision_core 字样。
+
+4.2 函数与方法
+〖必须〗变量复用：_runTask 内 reqId 只提取一次。
+
+〖必须〗精简函数：_dispatchMessage 内避免深层嵌套；通过 hitResp 变量把锁外逻辑提平。
+
+〖推荐〗单个函数不超过 40 行；超过时考虑拆分。
+
+〖必须〗失败用返回值：send 返回 False 时不检查，链路断由 onLinkDown 感知。
+
+〖必须〗main() 内禁止用 try/except 或 if not success: 包裹业务流程。进程锁获取（acquireOrExit，内部 sys.exit）不属于业务流程，不受此限。
+
+4.3 高内聚低耦合
+〖必须〗TcpComm / TcpControlLayer 不感知具体业务字符串（如 recognize、version_query），只识别注入的 asyncHandlers 字典键。
+
+〖必须〗禁止跨模块反向依赖。依赖方向只能是：control → modules/*/门面 → base/interfaces/platform/infra。modules/tcp/ 不得 import modules/usb/、modules/recognition/ 或 control/。
+
+〖必须〗模块独立性：一个模块的线程、门面、工具全部放在该模块文件夹内；control/ 只放跨模块协调对象。
+
+〖必须〗不做冗余保护：不检查业务返回的 payload 是否会覆盖 type / requestId；但在 ack.update 上一行注释“业务 payload 不得占用保留字段”。业务字段错误由测试阶段暴露。
+
+4.4 异常与日志
+〖必须〗业务异常全项目只使用 EdgeError 一个类 + ErrorCode 枚举（CONFIG / LINK_DOWN / FRAME_PARSE / INFERENCE_TIMEOUT / CAPTURE）。Python 内置异常（含 NotImplementedError）允许在模块内部使用，但不得穿越模块边界；跨模块边界前必须转为 EdgeError。
+
+〖必须〗日志对外只有四个方法：rx(module, data) / tx(module, data) / info(module, msg) / error(module, msg, exception=None)。
+
+〖必须〗_runTask 的顶层异常使用 logger.error(module, msg, exception=e) 记录（exception 参数会自动附堆栈）。
+
+〖必须〗stop() 的统计信息使用 logger.info。
+
+〖必须〗tcp/ 内部为通信健壮性保留的 try/except（包括 _runTask 业务兜底）属于必要容错，不违反“不写防御性判断”条款。
+
+〖推荐〗日志中异常码使用 e.code.name（如 FRAME_PARSE）而非数字，便于扫描。
+
+4.5 单例与进程约束
+〖必须〗不使用单例基类。IniConfigManager、LogManager、YoloEngine 各自在类内实现 instance()（类变量 + 双检锁），普通类仍可直接构造以便测试。
+
+〖必须〗main.py 第一件事获取进程单文件锁；拿不到锁立即退出，防止双开和端口占用。
+
+〖必须〗平台差异（路径分隔符、换行符、信号映射、高精度时钟、文件锁实现）全部收敛到 IPlatformAdapter；全项目只有 PlatformFactory 允许出现 sys.platform。
+
+5. 线程与生命周期
+〖必须〗所有线程继承 BaseThread，不得直接裸写 threading.Thread。
+
+〖必须〗BaseThread.stop(timeout=3.0) 必须实现“置停止事件 → 唤醒可打断等待 → join → 超时强制返回”。重复 stop 必须幂等。
+
+〖必须〗周期等待使用 interruptibleWait(sec) -> bool，返回值 False 表示收到停止指令；禁止使用裸 time.sleep。
+
+〖必须〗Sink 回调（onCaptureSuccess、onRecognitionResult 等）只做轻量分发或入队，禁止在回调内执行阻塞 IO；重活回到各自线程。
+
+6. 并发状态机
+〖必须〗TcpControlLayer 的链路状态迁移必须通过 transitionTo(state, reason, source) -> bool 原子方法完成（加锁并返回是否真正发生迁移）。心跳线程与解码线程并发宣告 DOWN 时，靠返回值去重，禁止直接读写 linkState。
+
+7. 类型检查与代码质量
+〖必须〗代码必须通过 mypy（目标版本 3.9+）；公共接口避免 Any 滥用，IConfig.get 初版保留 Any，后续迭代细化。
+
+〖必须〗代码必须通过 ruff；由于本项目采用 camelCase 方法/变量，需在 pyproject.toml 中显式关闭 N802/N803/N806/N815。
+
+〖推荐〗使用 pre-commit 在提交前同时运行 ruff 与 mypy。
+
+8. 文件与模块边界
+〖必须〗interfaces/ 零实现、零 import 业务模块。
+
+〖必须〗base/ 不 import 任何业务模块。
+
+〖必须〗control/ 允许放两类对象：① 跨模块协调对象（同时指挥 ≥2 个模块，如 EdgeControl）；② 仅服务于单一协调者的辅助组件（如缓存、状态容器，生命周期与该协调者绑定）。单一模块的门面必须留在 modules/<module>/ 内。
+
+〖必须〗tests/fakes/ 中的 Fake 实现必须与 interfaces/ 契约保持一致；新增接口时同步新增 Fake。

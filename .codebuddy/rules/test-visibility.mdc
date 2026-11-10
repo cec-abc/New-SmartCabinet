@@ -1,0 +1,86 @@
+---
+description: Agent Requested：任何阶段写测试、出验收证据或执行 /stage-done 时必须加载。规定每阶段必交 stages/<id>/test-report.md 的六节结构与测试代码约定；缺件即验收判红、不得收尾。
+alwaysApply: false
+enabled: true
+---
+
+# test-visibility.mdc — 测试透明化
+
+> **路径基准**：本文与全部配置中的 `stages/<id>/` 一律指
+> `edge/docs/refactor/stages/<id>/`（相对工作区根，见 `CODEBUDDY.md` §0）。
+> `<id>` = 实施阶段号 `0 / a / b / c1 / c2 / c3 / c4 / c5 / d`。
+> 本规则是 Agent Requested（保持 always 规则总数 5 条）；其强制力由
+> `04_stage_gate_and_memory.mdc` §4 的收尾门禁条目在 always 层兜底。
+
+## 1. 必交物与判红条件
+
+- 每阶段**必交** `edge/docs/refactor/stages/<id>/test-report.md`，六节齐备、无空节（无内容写「无」并说明原因）。
+- **缺此文件 = 验收一律判红**：`/stage-done` 不得收尾、`STAGE-STATE.md` 不得推进状态、
+  `memory-steward` 不得写 handoff 的完成结论。
+- 六节不全、第 ⑥ 节无「未覆盖项及原因」、第 ④ 节无可复现命令，同样判红。
+- 同目录另有 `spec-digest.md`（由 `spec-reader` 产出），是开工产物，不替代 `test-report.md`。
+
+## 2. test-report.md 固定六节（顺序不可变）
+
+```markdown
+# <阶段号> 阶段测试报告
+
+## ① 验收项 → 用例对照表
+| 验收项编号 | 验收项 | 对应用例名 | 覆盖结论 |
+
+## ② 使用了哪些 Fake、各自模拟什么边界
+| Fake 名称 | 对应接口 | 模拟的边界 / 异常 | 为何本阶段需要 |
+
+## ③ 用例表
+| 用例名 | 输入 | 预期 | 实际 | 结论 |
+（结论只允许：通过 / 失败 / 跳过并注明原因）
+
+## ④ 可复现的完整运行命令与运行环境
+- 命令：<完整命令，含参数与工作目录>
+- 环境：<OS、Python 版本、venv 路径、关键依赖版本、pytest/mypy/ruff 版本>
+- 前置条件：<配置文件、Fixture、端口/设备占用说明>
+
+## ⑤ 汇总
+| 通过 | 失败 | 跳过 | 总耗时 | 覆盖率 |
+
+## ⑥ 本阶段未覆盖项及原因
+| 未覆盖的验收项 / 分支 | 原因 | 归属阶段 | 补测计划 |
+```
+
+- ① 必须与 `references/stage-catalog.md` 的验收项编号一一对应，不得自行改写验收项措辞。
+- ③ 的「实际」填真实输出片段，不得写「符合预期」等空话。
+- ⑥ **必须明确列出**未覆盖项及原因；写「全部覆盖」须能由 ① 与 ③ 交叉验证。
+
+## 3. 测试代码约定
+
+1. **每个测试函数上方一行中文注释标注对应验收项编号**，例如
+   `# 对应验收项 0-2：PlatformFactory 在 Windows 返回 WindowsAdapter`。
+2. **禁止空洞断言**：不得出现 `assert True`、`assert x`、`assert result is not None`
+   这类不校验业务语义的断言；必须断言具体值、类型、枚举码或回调次数。
+3. **禁止为让测试变绿而改被测代码**：测试失败时如实记录并回报，
+   由 `implementer` 在白名单内修正实现，或由用户裁决；不得改验收项、改预期值、
+   删用例、加跳过标记来"洗绿"。
+4. 测试函数 / 文件名遵循 `02_coding_hard_constraints.mdc` 的命名与类型标注要求；
+   Fake 必须与 `edge/interfaces/` 契约一致。
+
+## 4. 门禁联动
+
+| 环节 | 约束 |
+| --- | --- |
+| `test-writer` | 写测试 + 产出 `test-report.md`；不改被测代码 |
+| **人工闸门（用户本人）** | review 代码并签字；未签字不得进入 `stage-verifier` |
+| `stage-verifier` | 只核对证据是否齐备、**只出举证表**，不下最终 review 结论、不代签 |
+| `stage-done` | 把 `test-report.md` 列为必交物；缺件即停 |
+| `memory-steward` | handoff 与 `STAGE-STATE.md` 证据栏必须记录 `test-report.md` 路径 |
+| 用户本人 | 最终 review 结论**由用户签字**，任何 agent 不得代签 |
+
+## 5. 目录产物约定
+
+```
+edge/docs/refactor/stages/<id>/
+  ├─ spec-digest.md     # spec-reader：读图读方案的语义摘要（开工产物）
+  └─ test-report.md     # test-writer：六节测试报告（收尾必交物）
+```
+
+- 目录按需创建，不预建空目录；每阶段各一份，不复用、不覆盖上一阶段报告。
+- 报告是 L4 资产，只读归档；发现写错时追加更正说明，不静默改写历史结论。

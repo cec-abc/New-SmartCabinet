@@ -1,0 +1,232 @@
+||||||||||||||||||||||||||||||||||||||||类图|||||||||||||||||||||||||||||||||||||||||||
+
+classDiagram
+    class Main {
+        <<System Entry>>
+        +main() void
+    }
+
+    class EdgeControl {
+        <<大控制层>>
+        -logInfo(msg: String) void
+        -logError(msg: String, e: Exception) void
+        +startSystem() void
+        +stopSystem() void
+        +onLinkDown() void
+        +onLinkUp() void
+    }
+
+    class SignalSink {
+        <<interface 接口>>
+        +onLinkDown() void
+        +onLinkUp() void
+    }
+
+    class TcpControlLayer {
+        <<Facade 门面>>
+        -socket: 唯一网络套接字
+        -signalSink: 依赖注入的接口
+        -reconnectThread: 重连线程实例
+        -heartbeatThread: 心跳线程实例
+        -state: 枚举(DOWN, CONNECTING, UP)
+        +start() void
+        +stop() void (停机)
+        -connect() bool (真实 socket.connect)
+        -onConnected() void (重连成功回调)
+        -onDisconnect(reason: String) void (断线处理回调)
+        -notifyStateChange(state: Enum) void (发送信号)
+    }
+
+    class TcpReconnectThread {
+        <<Thread 线程>>
+        -isThreadRunning: bool (线程是否运行标志位)
+        -stopEvent: Event (停机事件)
+        -backoffSeq: List~int~ [1,2,4,8,16,30]
+        -retryIdx: int (当前退避索引)
+        -logger: ILogger (依赖注入，用于记录异常)
+        -config: IConfig (依赖注入，用于读取配置)
+        +run() void (线程核心循环)
+        -tryConnect() throws Exception (异常时调用 logger.error() 记录，并向上抛)
+        -waitBackoff() void (内部调用 config.getValue 获取退避时间)
+        -resetBackoff() void (成功后重置退避)
+    }
+
+    %% 关系链路
+    Main ..> EdgeControl : 1. 调度 startSystem()
+    EdgeControl ..> TcpControlLayer : 2. 启动 Controller
+    TcpControlLayer ..|> SignalSink : 依赖 / 注入
+    EdgeControl ..|> SignalSink : 实现接口
+    TcpControlLayer *-- TcpReconnectThread : 组合持有
+
+    %% 备注说明
+    note for Main "主函数只与总控制(EdgeControl)交互"
+    note for EdgeControl "接收所有向上抛出的异常，统一记录日志"
+
+
+
+||||||||||||||||||||||||||||||||||||||||流程图|||||||||||||||||||||||||||||||||||||||||||
+
+
+flowchart TD
+    %% 样式定义
+    classDef startEnd fill:#E6E6FA,stroke:#9370DB,stroke-width:2px,rx:20,ry:20;
+    classDef process fill:#E6E6FA,stroke:#9370DB,stroke-width:2px;
+    classDef condition fill:#E6E6FA,stroke:#9370DB,stroke-width:2px,shape:diamond;
+    classDef stopProcess fill:#FFE4E1,stroke:#CD5C5C,stroke-width:2px;
+    classDef stopCond fill:#FFE4E1,stroke:#CD5C5C,stroke-width:2px,shape:diamond;
+
+    %% ================= 外部停机拦截模块（新增） =================
+    StopTrigger([【外部停机触发】<br/>EdgeControl 调用 stop()]):::startEnd
+    CheckState{【通信状态判断】<br/>当前 TCP 通信是否成功？}:::stopCond
+    
+    AllowStop[【允许停机】<br/>设置 isThreadRunning = False<br/>触发 stopEvent]:::stopProcess
+    DenyStop[【拒绝停机】<br/>调用 LogManager.error() 记录：TCP未连通，不允许 stop<br/>通过门面 tcpLayer 逐级抛异常至 EdgeControl]:::stopProcess
+
+    StopTrigger --> CheckState
+    CheckState -- "是 (通信正常)" --> AllowStop
+    CheckState -- "否 (断网/异常)" --> DenyStop
+
+    %% ================= 线程核心运行模块（主线） =================
+    Start([【启动入口】<br/>EdgeControl 调度<br/>拉起重连线程]):::startEnd
+    
+    Init[【初始化状态】<br/>1. isThreadRunning = True<br/>2. 退避下标 retryIdx = 0<br/>3. 从配置读取退避序列(调 IConfig.getValue)]:::process
+    
+    WhileCheck{【循环检查】<br/>isThreadRunning == True 吗？<br/>(判断是否被允许停机)}:::condition
+    
+    TryConnect[【发起连接】<br/>调用 tryConnect()<br/>内部执行 socket.connect()]:::process
+    
+    CatchError[【异常捕获与上抛】<br/>try-except 拦截:<br/>1. ConnectionRefused<br/>2. socket.timeout<br/>3. OSError<br/><br/>捕获异常后调用 LogManager.error() 记录，<br/>并通过门面 tcpLayer 逐级抛异常至 EdgeControl]:::process
+    
+    CheckSuccess{【连接结果判断】<br/>是否成功建立TCP连接？}:::condition
+    
+    %% 失败分支
+    FailProcess[【失败处理】<br/>retryIdx 加 1<br/>(累加退避时长，防越界)]:::process
+    WaitBackoff[【退避等待】<br/>调用 waitBackoff()<br/>1. 读取当前退避时间(1-30秒)<br/>2. 执行 stopEvent.wait(t)<br/>(期间若被允许 stop 会瞬间打断)]:::process
+    
+    %% 成功分支
+    SuccessProcess[【成功处理】<br/>调用 resetBackoff()<br/>将 retryIdx 重置为 0<br/>(为下次断线重新从1秒起算)]:::process
+    Handover[【移交控制权】<br/>1. 本模块调 LogManager.info() 记录正常日志<br/>2. 调用门面 onConnected()<br/>(拉起独立心跳线程、拉收包线程)]:::process
+    EndTask[【任务终结】<br/>设置 isThreadRunning = False<br/>(重连使命完成，退出循环)]:::process
+    
+    EndNode([【线程结束】<br/>释放资源，退出]):::startEnd
+
+    %% 主流程连线
+    Start --> Init
+    Init --> WhileCheck
+    
+    WhileCheck -- "是 (继续重连)" --> TryConnect
+    WhileCheck -- "否 (已被允许停机)" --> EndNode
+    
+    TryConnect --> CatchError
+    CatchError --> CheckSuccess
+    
+    CheckSuccess -- "否 (抛出异常/返回失败)" --> FailProcess
+    FailProcess --> WaitBackoff
+    WaitBackoff --> WhileCheck
+    
+    CheckSuccess -- "是 (物理网线接通)" --> SuccessProcess
+    SuccessProcess --> Handover
+    Handover --> EndTask
+    EndTask --> EndNode
+
+    %% 虚线关联：将停机模块的状态修改指向主循环
+    AllowStop -. "改变状态标志位" .-> WhileCheck
+    DenyStop -. "维持原状" .-> WhileCheck
+
+
+||||||||||||||||||||||||||||||||||||||||时序图|||||||||||||||||||||||||||||||||||||||||||
+
+sequenceDiagram
+    autonumber
+    
+    participant Main as 主函数(Main)
+    participant Edge as EdgeControl(大控制层)
+    participant Signal as SignalSink
+    participant TCPC as TcpControlLayer(门面/Controller)
+    participant Thread as TcpReconnectThread
+    participant Socket as 物理网络(Socket)<br/>【物理通信接口处】
+
+    Note over Main, Socket: ===== 1. 系统启动与首次连接 =====
+    Main->>Edge: main() 内部调用 start()
+    Edge->>Signal: 启动信号调度
+    Signal->>TCPC: 实例化并启动 Controller
+    TCPC->>Thread: 实例化并 start() 线程
+    Thread->>TCPC: 内部调用 _connect()
+    TCPC->>Socket: socket.connect()
+    
+    alt 连接成功
+        Socket-->>TCPC: 成功建立TCP连接
+        TCPC-->>Thread: 返回 True
+        Thread->>Thread: _reset_backoff() 重置索引为0
+        Thread->>Thread: 调 LogManager.info("连接成功")
+        Thread->>TCPC: 回调 _on_connected()
+        TCPC->>Edge: 触发 notify_state_change(UP) 
+        Note over Edge: 大控制层立刻拉起独立心跳线程<br/>（无需重连线程发心跳）
+        Edge->>Signal: 转发状态变更
+        Signal->>Edge: on_link_up()
+        Edge->>Edge: 1. 读 EventCache 补发 n2. 查 PendingRequest 重发
+        Edge-->>TCPC: 补报完成
+        TCPC-->>Main: 首次启动流程走完
+    else 连接失败 (异常抛出)
+        Socket-->>TCPC: ConnectionRefusedError / Timeout
+        TCPC-->>Thread: 抛出异常
+        Thread->>Thread: 调 LogManager.error("连接异常")
+        Thread->>TCPC: 逐级向上抛出异常(reason)
+        TCPC->>Edge: 上报异常
+        Note over Edge: 大控制层接收异常<br/>并进入重连退避流程
+    end
+
+    Note over Main, Socket: ===== 2. 重连退避循环 (启动阶段/异常触发) =====
+    loop 重连循环 [退避 1, 2, 4, 8, 16, 30 秒]
+        Thread->>Thread: 调 IConfig.getValue 获取退避时间
+        Thread->>Thread: _wait_backoff() / event.wait(t)
+        Note over Thread: 等待期间若外部调 stop() 立即唤醒并退出
+        Thread->>TCPC: 重试 _connect()
+        TCPC->>Socket: socket.connect()
+        alt 重试成功
+            Socket-->>TCPC: 返回结果(成功)
+            Note over Main, Socket: 跳转至 [3. 网络连通，重连成功]
+        else 重试失败
+            Socket-->>TCPC: 抛出异常
+            TCPC-->>Thread: 抛出异常
+            Thread->>Thread: 调 LogManager.error("重试失败")
+            Thread->>TCPC: 逐级向上抛出异常(reason)
+            TCPC->>Edge: 上报异常
+            Note over Edge: 遇到异常继续退避
+        end
+    end
+
+    Note over Main, Socket: ===== 3. 运行中断网与再次重连 =====
+    Socket-->>TCPC: 某时刻，心跳发送失败或 recv=0
+    TCPC->>TCPC: 触发 _on_disconnect(reason)
+    TCPC->>Socket: 关闭旧 socket
+    TCPC->>Edge: 触发 notify_state_change(DOWN)
+    Edge->>Signal: 转发 DOWN
+    Signal->>Edge: on_link_down()
+    Edge->>Edge: 停心跳、EventCache 开启落盘
+    
+    Edge->>TCPC: 重新唤醒/实例化重连线程
+    TCPC->>Thread: 进入退避循环 (重复步骤 8-11)
+    Note over Thread: 遇到异常继续退避
+    Thread->>Socket: 重连成功
+    Socket-->>Thread: 返回结果
+    Thread->>Thread: 调 LogManager.info("重连成功")
+    Thread->>TCPC: 回调 _on_connected()
+    TCPC->>Edge: 触发 notify_state_change(UP)
+    Note over Edge: 大控制层立刻拉起独立心跳线程
+    Edge->>Signal: 转发 UP
+    Signal->>Edge: on_link_up() 再次补报
+    Edge->>Edge: 再次补发 EventCache 和 PendingRequest
+
+    Note over Main, Socket: ===== 4. 系统停机 (主入口的结束) =====
+    Main->>Edge: stop()
+    Edge->>Edge: 设置 _running = False, _stop_event.set()
+    
+    alt 当前 TCP 通信成功
+        Edge->>TCPC: 允许 stop() 指令
+        TCPC->>Thread: 唤醒并退出重连线程
+        TCPC->>Socket: 关闭 socket
+        Edge-->>Main: 退出主函数
+    else 当前 TCP 通信不成功 (未连接/异常)
+        Note over Edge, Thread: 拒绝直接 stop 线程<br/>（子线程内部调 LogManager.error() 记录并抛异常拦截）
+    end

@@ -1,0 +1,40 @@
+[project]
+name = "edge"
+version = "0.1.0"
+description = "RK3588 边缘计算项目（Windows 开发 / 麒麟 Linux 部署）"
+requires-python = ">=3.9"
+dependencies = []
+
+[project.optional-dependencies]
+dev = [
+    "mypy>=1.4,<2",
+    "ruff>=0.4,<1",
+    "pytest>=7.4,<9",
+]
+
+[tool.ruff]
+target-version = "py39"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "UP"]
+## 项目采用 camelCase 方法/变量命名，关闭 pep8-naming 的相关规则
+ignore = ["N802", "N803", "N806", "N815"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["edge"]
+
+[tool.mypy]
+python_version = "3.9"
+strict = true
+files = ["edge"]
+warn_unused_configs = true
+
+## 本机预装的 pytest 9 源码含 3.10 match 语法，3.9 目标下跳过跟随分析
+[[tool.mypy.overrides]]
+module = ["pytest", "pytest.*", "_pytest.*"]
+follow_imports = "skip"
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["edge/tests"]
