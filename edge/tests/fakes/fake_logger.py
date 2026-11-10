@@ -1,7 +1,7 @@
 """日志接口 Fake 实现。"""
 from __future__ import annotations
 
-from edge.interfaces.i_logger import FrameData, ILogger
+from edge.interfaces.i_logger import ILogger
 
 
 ## @brief 只记录调用、不做落盘的日志 Fake
@@ -9,9 +9,9 @@ class FakeLogger(ILogger):
     ## @brief 构造 Fake
     def __init__(self) -> None:
         ## @brief 接收帧记录
-        self.rxRecords: list[tuple[str, FrameData]] = []
+        self.rxRecords: list[tuple[str, dict[str, object] | bytes]] = []
         ## @brief 发送帧记录
-        self.txRecords: list[tuple[str, FrameData]] = []
+        self.txRecords: list[tuple[str, dict[str, object] | bytes]] = []
         ## @brief 信息日志记录
         self.infoRecords: list[tuple[str, str]] = []
         ## @brief 错误日志记录
@@ -21,14 +21,14 @@ class FakeLogger(ILogger):
     #  @param module 模块名
     #  @param data 帧数据
     #  @return 无
-    def rx(self, module: str, data: FrameData) -> None:
+    def rx(self, module: str, data: dict[str, object] | bytes) -> None:
         self.rxRecords.append((module, data))
 
     ## @brief 记录发送帧
     #  @param module 模块名
     #  @param data 帧数据
     #  @return 无
-    def tx(self, module: str, data: FrameData) -> None:
+    def tx(self, module: str, data: dict[str, object] | bytes) -> None:
         self.txRecords.append((module, data))
 
     ## @brief 记录普通信息

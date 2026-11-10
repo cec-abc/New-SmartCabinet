@@ -15,16 +15,18 @@
 | `done` | 验收全通过、用户本人签字、沉淀完成 | 用户确认后由 `/stage-done` 记录 |
 | `blocked` | 阻塞，等待用户裁决 | 记录原因 + 等待用户 |
 
-**当前阶段**：`0`（`pending`，待用户确认开工）
+**当前阶段**：`0`（`done`，2026-11-10 用户本人确认验收通过并录入最终 review 结论）
 **前置门禁**：L1 契约层零自动变更；任何契约变更必须给 diff 并等用户批准。
 **必交物**：`edge/docs/refactor/stages/<id>/test-report.md`（六节）；缺件验收判红、不得收尾。
 **人工闸门**：用户本人 review 代码并签字；`stage-verifier` 只举证，不代签。
+**禁写解除（仅本阶段）**：2026-11-10 开工卡经用户点头后，仅对阶段 0 白名单内 `.py` 解除；白名单外 `.py`、L1 契约层、`edge/docs/spec/**` 原文与图片仍一律禁写；**本许可不沿用**至阶段 a 及之后。
+**收尾状态：`done`**（2026-11-10 执行 `/stage-done 0` 收尾沉淀并经用户本人确认验收通过；最终 review 结论按用户口述原文录入 `edge/docs/refactor/HANDOFF-0.md` §9，注明「用户口述 2026-11-10」且不视为代签；状态推进经用户明确确认）。
 
 ## 2. 阶段总表（共 9 个阶段）
 
 | 阶段 | 交付范围 | 状态 | 验收项编号 | 必交物 | 证据 | 最后更新 |
 | --- | --- | --- | --- | --- | --- | --- |
-| `0` | 已有骨架：`exceptions.py` + `platform/` | `pending` | `0-1`~`0-4` | `stages/0/test-report.md` | — | 2026-11-10 |
+| `0` | 已有骨架：`exceptions.py` + `platform/` | `done` | `0-1`~`0-4` | `stages/0/test-report.md` | 必交物 `edge/docs/refactor/stages/0/test-report.md` 六节齐备（⑥ 6 行未覆盖项、未写「全部覆盖」）；`edge/docs/refactor/stages/0/spec-digest.md` 五节齐备含 `0-1` 审读表。工具链：pytest `22 passed`（报告 ④ 记 `0.21s`，收尾复核 `0.29s`，耗时波动）；ruff `All checks passed!`；mypy 既有 2 条 `untyped-decorator`、`Found 2 errors in 1 file (checked 29 source files)`、退出码 1（如实保留真实失败，不写「通过」）；collect-only `22 tests collected`、无 `FrameData` ImportError。举证表：`stage-verifier` 会话内产物，无独立落盘文件路径（待补说明，不编造）；步骤 4 完整举证表经用户确认、步骤 7 增量复核 7 项「仍成立」；结论摘要见 `edge/docs/refactor/HANDOFF-0.md` §3。`contract-guard` L1 零自动变更、无契约 diff、无需批准。用户本人 2026-11-10 review 代码并签字「我看过代码和 test-report.md 了，签字」并确认举证表。 | 2026-11-10 |
 | `a` | 已有骨架：`interfaces/` + `tests/fakes/` | `pending` | `a-1`~`a-4` | `stages/a/test-report.md` | — | 2026-11-10 |
 | `b` | `base/base_thread.py`、`base_service.py` | `pending` | `b-1`~`b-3` | `stages/b/test-report.md` | — | 2026-11-10 |
 | `c1` | `infra/config_manager.py` | `pending` | `c1-1`~`c1-4` | `stages/c1/test-report.md` | — | 2026-11-10 |
@@ -122,6 +124,9 @@
 | --- | --- | --- | --- | --- |
 | 2026-11-10 | 全部 | 流程配置初始化，9 阶段全 `pending` | 待用户确认配置清单 | 待确认 |
 | 2026-11-10 | 0 / a | 27 个 `.py` 契约判定：新骨架、非旧代码 | 目标改为审读 + 契约核验 + 补可举证单测 | 待确认 |
+| 2026-11-10 | 0 | 开工确认卡经用户点头，`pending → in_progress`；禁写 `.py` 仅对阶段 0 白名单解除且不沿用；A5 落点定为 `edge/tests/unit/`（只新增文件、不改既有断言，后续阶段同理）；资料口径按「阶段 0 / #22」 | L1 基线无变更（`git status --porcelain` 空、`git diff --name-status governance-v1 HEAD` 空、tag = HEAD = `a71d97f`）；四步执行中，人工闸门待用户本人签字 | 已确认（用户本人） |
+| 2026-11-10 | 0 | 收尾事件：用户本人 review 代码并签字「我看过代码和 test-report.md 了，签字」并确认步骤 4 完整举证表；步骤 7 `stage-verifier` 增量复核 7 项「仍成立」；`contract-guard` 复核 L1 零自动变更；执行 `/stage-done 0` 收尾沉淀（handoff / STAGE-STATE 证据栏 / lessons L-01 / 项目记忆 / 检视经验库） | 必交物 `edge/docs/refactor/stages/0/test-report.md` 六节齐备，举证齐备；本 agent 不决定状态推进、不代签最终 review 结论；建议状态待用户确认推进 `done`，当前状态列保持 `in_progress`、§3 复选框保持 `[ ]` | 最终 review 结论留空，待用户本人填写 |
+| 2026-11-10 | 0 | 用户本人确认「阶段 0 验收通过，状态推进为 done」，最终 review 结论按本条口述原文录入 `edge/docs/refactor/HANDOFF-0.md` §9（注明「用户口述 2026-11-10」，不视为代签）；三个复选框、确认人与日期一并填写；覆盖率不引入，保持现状 | 状态 `in_progress → done`；结论为用户本人本条口述、助手按原文照录，未代签；L1 契约层零自动变更结论不变 | 已确认（用户本人） |
 
 ## 6. 使用协议
 
