@@ -15,19 +15,20 @@
 | `done` | 验收全通过、用户本人签字、沉淀完成 | 用户确认后由 `/stage-done` 记录 |
 | `blocked` | 阻塞，等待用户裁决 | 记录原因 + 等待用户 |
 
-**当前阶段**：`0`（`done`，2026-11-10 用户本人确认验收通过并录入最终 review 结论）
-**前置门禁**：L1 契约层零自动变更；任何契约变更必须给 diff 并等用户批准。
+**当前阶段**：`a`（`done`，2026-11-10 用户本人确认验收通过并录入最终 review 结论；下一阶段 `b` 待开工确认）
+**前置门禁**：L1 契约层零自动变更；任何契约变更必须给 diff 并等用户批准。**L1 基线已变更一次且已获批准**：`edge/tests/contract/test_phase0_foundation.py` 的已批准 diff 登记在 `references/decisions.md` 附录 A 与 `HANDOFF-a.md` §4，后续 `contract-guard` 以 tag `stage-a-done` + 该附录为对比基线，不重复判定。
 **必交物**：`edge/docs/refactor/stages/<id>/test-report.md`（六节）；缺件验收判红、不得收尾。
 **人工闸门**：用户本人 review 代码并签字；`stage-verifier` 只举证，不代签。
-**禁写解除（仅本阶段）**：2026-11-10 开工卡经用户点头后，仅对阶段 0 白名单内 `.py` 解除；白名单外 `.py`、L1 契约层、`edge/docs/spec/**` 原文与图片仍一律禁写；**本许可不沿用**至阶段 a 及之后。
-**收尾状态：`done`**（2026-11-10 执行 `/stage-done 0` 收尾沉淀并经用户本人确认验收通过；最终 review 结论按用户口述原文录入 `edge/docs/refactor/HANDOFF-0.md` §9，注明「用户口述 2026-11-10」且不视为代签；状态推进经用户明确确认）。
+**禁写解除（仅本阶段）**：阶段 a 已收尾，开工卡对阶段 a 白名单内 `.py` 的禁写解除**随阶段结束失效、不沿用**；阶段 b 须重新经开工卡用户点头后才按白名单解除。白名单外 `.py`、L1 契约层、`edge/docs/spec/**` 原文与图片仍一律禁写。
+**收尾状态：`done`**（阶段 0 记录：2026-11-10 执行 `/stage-done 0` 并经用户本人确认；最终 review 结论按用户口述原文录入 `HANDOFF-0.md` §9，注明「用户口述 2026-11-10」且不视为代签）。
+**阶段 a 收尾状态：`done`**（2026-11-10 用户本人本条确认「阶段 a 验收通过，同意收尾」并同时确认状态推进 `a → done`；最终 review 结论按用户口述原文录入 `edge/docs/refactor/HANDOFF-a.md` §9，注明「用户口述 2026-11-10」且不视为代签；沉淀、git 提交与 annotated tag `stage-a-done` 均按用户指令完成）。
 
 ## 2. 阶段总表（共 9 个阶段）
 
 | 阶段 | 交付范围 | 状态 | 验收项编号 | 必交物 | 证据 | 最后更新 |
 | --- | --- | --- | --- | --- | --- | --- |
 | `0` | 已有骨架：`exceptions.py` + `platform/` | `done` | `0-1`~`0-4` | `stages/0/test-report.md` | 必交物 `edge/docs/refactor/stages/0/test-report.md` 六节齐备（⑥ 6 行未覆盖项、未写「全部覆盖」）；`edge/docs/refactor/stages/0/spec-digest.md` 五节齐备含 `0-1` 审读表。工具链：pytest `22 passed`（报告 ④ 记 `0.21s`，收尾复核 `0.29s`，耗时波动）；ruff `All checks passed!`；mypy 既有 2 条 `untyped-decorator`、`Found 2 errors in 1 file (checked 29 source files)`、退出码 1（如实保留真实失败，不写「通过」）；collect-only `22 tests collected`、无 `FrameData` ImportError。举证表：`stage-verifier` 会话内产物，无独立落盘文件路径（待补说明，不编造）；步骤 4 完整举证表经用户确认、步骤 7 增量复核 7 项「仍成立」；结论摘要见 `edge/docs/refactor/HANDOFF-0.md` §3。`contract-guard` L1 零自动变更、无契约 diff、无需批准。用户本人 2026-11-10 review 代码并签字「我看过代码和 test-report.md 了，签字」并确认举证表。 | 2026-11-10 |
-| `a` | 已有骨架：`interfaces/` + `tests/fakes/` | `pending` | `a-1`~`a-4` | `stages/a/test-report.md` | — | 2026-11-10 |
+| `a` | 已有骨架：`interfaces/` + `tests/fakes/` | `done` | `a-1`~`a-4` | `stages/a/test-report.md` | 必交物 `edge/docs/refactor/stages/a/test-report.md` 六节齐备（③ 真实输出、④ 可复现命令与环境、⑥ 6 行未覆盖项及原因，未写「全部覆盖」）；`edge/docs/refactor/stages/a/spec-digest.md` 五节齐备含 `a-1` 审读表与 `a-2` 31 行签名核验表。工具链收尾复核：pytest `33 passed in 0.33s`（另有 `0.36s` / `0.32s` 实测，耗时波动，均真实）、ruff `All checks passed!`、mypy `Success: no issues found in 30 source files`（退出码均 0，附 `unused section(s)` note 非错误）；时间点 A（L1 diff 落地后）另记 `22 passed in 0.29s` / `29 source files`。`a-4` 按用户 2026-11-10 裁决按 10 处口径收口（5 个 Fake 共 10 处字段标注全部补齐），裁决写入 `spec-digest.md` §5。步骤 4 `stage-verifier` 举证表结论「证据齐备（a-1~a-4 逐条举证通过；无未通过项、无判红、无 blocked）」，会话内产物、无独立落盘路径（如实标注、不编造）。`python-code-review` 全量检视报告一次，改动均在白名单内、无空洞断言、不妨碍收尾，跨阶段遗留项已标归属（见 `HANDOFF-a.md` §3）。`contract-guard` 收尾结论「有变更 1 处 + 已由用户明确批准，不触发 blocked」：`edge/tests/contract/test_phase0_foundation.py` 的 typed 装饰器 diff 先经用户批准后落地，完整 diff 与 baseline 登记见 `HANDOFF-a.md` §4 与 `references/decisions.md` 附录 A；其余 L1 契约层与 spec 原文/PNG 零改动。用户本人 2026-11-10 review 并签字「我看过 test-report.md 了，签字」，口述最终结论「阶段 a 验收通过，同意收尾；⑥ 六项未覆盖项按归属留后续阶段，覆盖率不引入。」并同时确认状态推进 `done`（原文录入 `HANDOFF-a.md` §9，注明「用户口述 2026-11-10」、不视为代签）。沉淀：`HANDOFF-a.md`、lessons L-02 / L-03、项目记忆 topic、检视经验库、decisions 附录 A。 | 2026-11-10 |
 | `b` | `base/base_thread.py`、`base_service.py` | `pending` | `b-1`~`b-3` | `stages/b/test-report.md` | — | 2026-11-10 |
 | `c1` | `infra/config_manager.py` | `pending` | `c1-1`~`c1-4` | `stages/c1/test-report.md` | — | 2026-11-10 |
 | `c2` | `infra/log_manager.py` | `pending` | `c2-1`~`c2-4` | `stages/c2/test-report.md` | — | 2026-11-10 |
@@ -127,6 +128,9 @@
 | 2026-11-10 | 0 | 开工确认卡经用户点头，`pending → in_progress`；禁写 `.py` 仅对阶段 0 白名单解除且不沿用；A5 落点定为 `edge/tests/unit/`（只新增文件、不改既有断言，后续阶段同理）；资料口径按「阶段 0 / #22」 | L1 基线无变更（`git status --porcelain` 空、`git diff --name-status governance-v1 HEAD` 空、tag = HEAD = `a71d97f`）；四步执行中，人工闸门待用户本人签字 | 已确认（用户本人） |
 | 2026-11-10 | 0 | 收尾事件：用户本人 review 代码并签字「我看过代码和 test-report.md 了，签字」并确认步骤 4 完整举证表；步骤 7 `stage-verifier` 增量复核 7 项「仍成立」；`contract-guard` 复核 L1 零自动变更；执行 `/stage-done 0` 收尾沉淀（handoff / STAGE-STATE 证据栏 / lessons L-01 / 项目记忆 / 检视经验库） | 必交物 `edge/docs/refactor/stages/0/test-report.md` 六节齐备，举证齐备；本 agent 不决定状态推进、不代签最终 review 结论；建议状态待用户确认推进 `done`，当前状态列保持 `in_progress`、§3 复选框保持 `[ ]` | 最终 review 结论留空，待用户本人填写 |
 | 2026-11-10 | 0 | 用户本人确认「阶段 0 验收通过，状态推进为 done」，最终 review 结论按本条口述原文录入 `edge/docs/refactor/HANDOFF-0.md` §9（注明「用户口述 2026-11-10」，不视为代签）；三个复选框、确认人与日期一并填写；覆盖率不引入，保持现状 | 状态 `in_progress → done`；结论为用户本人本条口述、助手按原文照录，未代签；L1 契约层零自动变更结论不变 | 已确认（用户本人） |
+| 2026-11-10 | a | 开工确认卡经用户点头，`pending → in_progress`；四项裁决：① `a-3` 选候选 A，先出 `edge/tests/contract/test_phase0_foundation.py` 完整 diff（变更前后 + 影响面 + 受影响测试/Fake）并停下等批准，批准后才动，禁删用例 / 加 skip 标记 / 整体关闭错误码，不改 `edge/pyproject.toml`；② `a-4` 9 处 Fake 字段类型标注在白名单内补齐，不列为未覆盖项；③ `patch.object(sys, "platform")` 只出复核结论写入 `edge/docs/refactor/stages/a/spec-digest.md`，不改上一阶段任何产物文件；④ 工作区 `HANDOFF-0.md` 未提交改动不处理、不算阶段 a 改动，收尾时随本阶段提交 | L1 基线无变更（按 L1 pathspec 的 `git diff --name-only governance-v1 HEAD`、`git diff --name-only governance-v1`、`git status --porcelain` 三段输出全空；`contract-guard` 静态核验 17 个契约文件齐备、无待批准契约 diff）；本轮仅记录状态并输出待批准 diff，四步待 diff 批准后启动；人工闸门待用户本人签字 | 已确认（用户本人） |
+| 2026-11-10 | a | 用户本人明确批准 L1 完整 diff 并落地；追加裁决「第 10 处 `lockResult` 一并补齐字段级标注、按 10 处口径收口，不再纠结 9/10 差异」「不用重写测试，由主 agent 按六节模板直接补 `test-report.md`」；三项工具链全绿 | L1 diff 落地后立即实跑：pytest `22 passed in 0.29s`、ruff `All checks passed!`、mypy `Success: no issues found in 29 source files`（退出码均 0）；5 个 Fake 共 10 处字段标注补齐；必交物 `stages/a/test-report.md` 六节齐备；收尾复核 `33 passed` / mypy `30 source files` | 已确认（用户本人） |
+| 2026-11-10 | a | 收尾事件：用户本人 review 并签字「我看过 test-report.md 了，签字」，口述最终 review 结论「阶段 a 验收通过，同意收尾；⑥ 六项未覆盖项按归属留后续阶段，覆盖率不引入。」并**同时确认状态推进 `a → done`**；步骤 4 `stage-verifier` 只出举证表（证据齐备、不含最终结论、不代签）；执行 `/stage-done a`：`python-code-review` 全量检视一次、`contract-guard` 复核（有变更 1 处 + 已批准、不阻断）、写 `HANDOFF-a.md`、更新本文件证据栏与状态、追加 lessons L-02 / L-03、登记 `references/decisions.md` 附录 A（首次经用户批准的 L1 变更 baseline）、同步项目记忆与检视经验库 | 必交物 `edge/docs/refactor/stages/a/test-report.md` 六节齐备；`a-1`~`a-4` 逐条举证通过；L1 变更先 diff 后批准再落地、硬要求已遵守；状态 `in_progress → done` 由用户本条明确确认，未另停一次；结论为用户本人本条口述、助手按原文照录，未代签；所有文档写入均在 git 提交之前完成 | 已确认（用户本人） |
 
 ## 6. 使用协议
 

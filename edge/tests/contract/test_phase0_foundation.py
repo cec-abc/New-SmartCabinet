@@ -5,13 +5,25 @@ import os
 import subprocess
 import sys
 import tempfile
+from collections.abc import Callable
 from pathlib import Path
+from typing import cast
 
 import pytest
 
 from edge.exceptions import EdgeError, ErrorCode
 from edge.platform.adapter import LinuxAdapter, PlatformFactory, WindowsAdapter
 from edge.platform.file_lock import ProcessFileLock
+
+
+## @brief 为 skipif 装饰器补齐类型，避免 follow_imports=skip 下装饰器被推断为 Any
+#  @param reason 跳过原因，原样传给 pytest.mark.skipif
+#  @return 带类型的 skipif 装饰器
+def windowsOnly(reason: str) -> Callable[[Callable[[], None]], Callable[[], None]]:
+    return cast(
+        Callable[[Callable[[], None]], Callable[[], None]],
+        pytest.mark.skipif(os.name != "nt", reason=reason),
+    )
 
 
 ## @brief EdgeError 携带枚举码，字符串含 code.name 便于日志扫描
@@ -23,7 +35,7 @@ def testEdgeErrorCarriesCodeName() -> None:
 
 
 ## @brief Windows 上工厂返回完整实现的适配器
-@pytest.mark.skipif(os.name != "nt", reason="仅 Windows 验证")
+@windowsOnly("仅 Windows 验证")
 def testFactoryReturnsWindowsAdapter() -> None:
     assert isinstance(PlatformFactory.create(), WindowsAdapter)
 
@@ -45,7 +57,7 @@ def testLinuxSkeletonIsConvertedToEdgeError() -> None:
 
 
 ## @brief 主进程持锁时，第二进程拿锁失败并报告 CONFIG
-@pytest.mark.skipif(os.name != "nt", reason="仅 Windows 验证")
+@windowsOnly("仅 Windows 验证")
 def testSecondProcessCannotAcquireLock() -> None:
     projectRoot = Path(__file__).resolve().parents[3]
     with tempfile.TemporaryDirectory() as tempDir:

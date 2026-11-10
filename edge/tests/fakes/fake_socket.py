@@ -10,13 +10,13 @@ class FakeSocket(ISocket):
     #  @param recvData recv 固定返回的数据
     def __init__(self, recvData: bytes = b"") -> None:
         ## @brief recv 固定返回值
-        self.recvData = recvData
+        self.recvData: bytes = recvData
         ## @brief 已发送帧记录
         self.sentFrames: list[bytes] = []
         ## @brief 是否已连接
-        self.connected = False
+        self.connected: bool = False
         ## @brief 是否已关闭
-        self.closed = False
+        self.closed: bool = False
 
     ## @brief 记录连接动作
     #  @return 无

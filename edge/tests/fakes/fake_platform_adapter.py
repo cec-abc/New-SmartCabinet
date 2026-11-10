@@ -12,7 +12,7 @@ class FakePlatformAdapter(IPlatformAdapter):
     #  @param lockResult lockFile 的返回值，用于模拟锁被占用
     def __init__(self, lockResult: BinaryIO | None = None) -> None:
         ## @brief 预设的锁返回值
-        self.lockResult = lockResult
+        self.lockResult: BinaryIO | None = lockResult
         ## @brief lockFile 调用记录
         self.lockCalls: list[str] = []
 

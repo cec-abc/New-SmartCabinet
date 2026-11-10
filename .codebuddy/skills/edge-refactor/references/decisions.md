@@ -75,3 +75,30 @@
 目标环境 / Python 与类型标注 / 命名 / 注释 / 异常 / 单例 / 日志 / 进程锁 / NPU 并发 /
 补发去重 / 部署 / 摄像头寻址 / `.so` / 引导文件。
 阶段与目录定义见同文件 §2、§5；编码细则见 `edge/docs/spec/编码规范规则.txt`。
+
+## 附录 A — L1 契约变更基线（2026-11-10 用户批准，非新裁决）
+
+> 本节是**用户 2026-11-10 明确指令**下登记的基线记录，**不是新的 D-xx 裁决**；D-01 / D-02 / D-03 不变，裁决变更协议「助手不得自行推断第四条裁决」继续有效。
+> 用途：作为后续阶段 `contract-guard` 开工 / 收尾核验的**对比基线**，避免每阶段对同一已批准变更重复判定「未批准 / 自动修改」。
+
+### A.1 生效与批准
+
+- **生效日期**：2026-11-10（阶段 `a` 收尾）。
+- **来源**：用户 2026-11-10 指令「批准这份 diff，落地执行……」及「收尾时把『首次经用户批准的 L1 变更』登记进 decisions.md 与 handoff，作为后续 baseline 对比依据，避免每阶段重复判定」。
+- **流程**：先输出完整 diff（变更前后 + 影响面 + 受影响测试/Fake）→ 停下等批准 → 用户明确批准后落地 → 落地后立即实跑 mypy / ruff / pytest 三项并给真实输出 → 收尾登记 baseline。硬要求「不得自动修改 L1；契约变更必须给 diff 并等用户批准」已遵守。
+- **基线 tag**：`stage-a-done`（annotated）。
+
+### A.2 唯一已批准变更
+
+- 文件：`edge/tests/contract/test_phase0_foundation.py`（L1 契约层 `edge/tests/contract/*`）。
+- 内容：新增 `from collections.abc import Callable` / `from typing import cast`；新增 typed 装饰器 wrapper `windowsOnly(reason: str) -> Callable[[Callable[[], None]], Callable[[], None]]`（`cast` 包装 `pytest.mark.skipif`，条件 `os.name != "nt"` 与 reason 原样保留）；两处 `@pytest.mark.skipif(os.name != "nt", reason="仅 Windows 验证")` 改为 `@windowsOnly("仅 Windows 验证")`。
+- 约束：既有 5 个 `testXxx` 用例函数体与断言零改动；`edge/pyproject.toml` 零改动；不删用例、不加 skip 标记、不整体关闭错误码、不为变绿改被测实现。
+- 完整 diff：`edge/docs/refactor/HANDOFF-a.md` §4（逐行 `-` / `+` 原文）。
+- 工具链证据：落地后立即实跑 mypy `Success: no issues found in 29 source files`、ruff `All checks passed!`、pytest `22 passed in 0.29s`；收尾复核 mypy `Success: no issues found in 30 source files`、ruff `All checks passed!`、pytest `33 passed`（退出码均 0）。阶段 0 报告的 mypy 历史失败不倒改、不洗绿。
+
+### A.3 基线使用口径
+
+1. 后续阶段 `contract-guard` 以 tag `stage-a-done` + 本附录 + `HANDOFF-a.md` §4 为对比基线：该文件相对此基线的**新增**改动才需要重新走 diff + 批准流程；基线中已批准的变更不再判为「未批准 / 自动修改」，也不重复输出「等待批准」或把收尾转为 `blocked`。
+2. 其余 L1 契约层文件（`整体重构方案.txt` / `编码规范规则.txt` / `编码规范.mdc` / `interfaces/*.py` / `exceptions.py` / `pyproject.toml` / `tests/contract/*` 其余文件）与 `edge/docs/spec/**` 原文 / PNG 仍保持零自动变更；任何新增契约变更必须先给完整 diff 并等用户明确批准。
+3. 本附录不改动 D-01 / D-02 / D-03 的内容、影响阶段与禁止事项；不分配新裁决编号。
+4. 若用户后续撤销或变更本基线，须按「裁决变更协议」由用户明确下达，并同步本附录、handoff、项目记忆与 `STAGE-STATE.md`。

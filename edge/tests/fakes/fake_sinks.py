@@ -21,7 +21,7 @@ class FakeSignalSink(SignalSink):
         ## @brief 断链宣告记录
         self.linkDownEvents: list[tuple[str, str]] = []
         ## @brief 链路恢复次数
-        self.linkUpCount = 0
+        self.linkUpCount: int = 0
 
     ## @brief 记录已解码信号
     #  @param signal 信号帧

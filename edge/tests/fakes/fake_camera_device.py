@@ -10,11 +10,11 @@ class FakeCameraDevice(ICameraDevice):
     #  @param frame readFrame 固定返回的图像字节
     def __init__(self, frame: FrameImage | None = b"frame") -> None:
         ## @brief 预设图像帧
-        self.frame = frame
+        self.frame: FrameImage | None = frame
         ## @brief 是否已打开
-        self.opened = False
+        self.opened: bool = False
         ## @brief 是否已关闭
-        self.closed = False
+        self.closed: bool = False
 
     ## @brief 记录打开动作
     #  @return 无

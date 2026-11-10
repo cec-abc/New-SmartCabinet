@@ -9,11 +9,11 @@ class FakeThread(IThread):
     ## @brief 构造 Fake
     def __init__(self) -> None:
         ## @brief start 调用次数
-        self.startCount = 0
+        self.startCount: int = 0
         ## @brief stop 收到的超时参数
         self.stopTimeouts: list[float] = []
         ## @brief 模拟的运行态
-        self.running = False
+        self.running: bool = False
 
     ## @brief 记录启动
     #  @return 无

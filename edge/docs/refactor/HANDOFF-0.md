@@ -68,6 +68,7 @@
 - 契约变更 diff：无。
 - 批准状态：无需批准。
 - 硬要求复核：**不得自动修改 L1；任何契约变更必须给 diff 并等用户批准** —— 已遵守。如实注明：**基线差异由主 agent 只读 git 举证**（`git status --porcelain` 空、`git diff --name-status governance-v1 HEAD` 空、tag = HEAD = `a71d97f`），`contract-guard` 如实声明其**无命令执行能力**、仅做当前态静态核验，基线举证来自主 agent。
+- 补充说明（2026-11-10 用户确认收尾后追加）：上文「`git status --porcelain` 空」是**开工时基线核验快照**；本阶段收尾提交后工作区存在本阶段改动，但**均不在 L1 契约层内**（`git diff --name-only governance-v1 -- <L1 pathspec>` 仍为空），L1 零变更结论不变。
 
 ## 5. 三条已定裁决落实
 
