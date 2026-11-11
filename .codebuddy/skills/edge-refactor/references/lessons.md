@@ -72,6 +72,14 @@
 - **上升为**：检视经验库（新增「后台消费者停机三要素与可观测举证」检查项）；无新规则 / 无新裁决。
 - **来源**：`stages/c2/test-report.md` ①③④⑥ + `HANDOFF-c2.md` §3 检视报告。
 
+### L-07 ｜ 2026-11-11 ｜ 阶段 c3
+
+- **触发**：`python-code-review` 检视 `TcpControlLayer.onLinkDown` 修复时发现，`BaseThread.start()` 带 `_hasStarted` 幂等保护，对一个已 `start()` 并退出的线程实例再次 `start()` 是静默 no-op，导致断线后重连线程无法重启、`linkState` 永远回不到 UP。
+- **结论**：凡「断开后要重建/重启」的后台线程（重连、采集、识别等），**每次拉起都新建线程实例**而非复用旧实例；停线程时若调用线程恰为被停线程自身（如 decode 在 recv 空时调 `onLinkDown` 停自己），`BaseThread.stop()` 的 `self-join` 会抛 `RuntimeError`，`stopEvent` 已置位、线程会在 `runLoop` 退出条件满足后自行结束，故用 `try/except RuntimeError` 吞掉即可，不要因此不调 `stop()`。
+- **归属**：本阶段已收敛；同类「断开→重建线程」范式在 `c4`/`c5`/`d` 沿用。
+- **上升为**：检视经验库（新增「重连类线程每次拉起须新建实例」检查项）；无新规则 / 无新裁决。
+- **来源**：`HANDOFF-c3.md` §3 `python-code-review` 报告 P2 项 + `stages/c3/test-report.md` ③ `test_c3_x_relink_after_down`。
+
 ## 4. 配置期已登记（非经验，供开工索引）
 
 - 用户明确：**不得自动修改 L1 契约层，契约变更必须给 diff 并等批准**（已固化于规则 01/04、SKILL.md §6）。
