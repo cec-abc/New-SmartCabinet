@@ -62,7 +62,9 @@ description: RK3588 边缘计算重构流程技能。重构阶段开工、收尾
 6. 调用 `memory-steward`：按 `edge/docs/refactor/HANDOFF-TEMPLATE.md` 写 handoff、
    更新 `STAGE-STATE.md` 证据栏与更新时间（状态标「待用户确认」）、追加 `lessons.md`、
    写入项目记忆与检视经验库。
-7. 输出收尾结论并**停下等待用户确认**；确认后才把状态改为 `done`。
+7. 本地提交并打 annotated tag 之后，推送远端：`git push origin main` 与 `git push origin --tags`
+   （推全部 tag）。推不动如实报告并停下；不 force、不改 git 配置、不重写历史。
+8. 输出收尾结论并**停下等待用户确认**；确认后才把状态改为 `done`。
 
 写入边界：只写 L3 / L4 资产与本阶段已确认范围内的实现文件；不写 L1、不写 spec 原文/图片。
 
