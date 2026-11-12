@@ -96,6 +96,14 @@
 - **上升为**：无（无新规则 / 无新裁决；`decisions.md` 原文不改）。
 - **来源**：用户 2026-11-12 开工指令 + `stages/c5/spec-digest.md` §5 + `stages/c5/test-report.md` ⑥ + `HANDOFF-c5.md` §6。
 
+### L-10 ｜ 2026-11-12 ｜ 阶段 d
+
+- **触发**：控制层 `EdgeControl` 需注入三个门面、而三个门面又需 `Sink=EdgeControl`，形成构造循环；同时 EventCache 存废归 d 却与 §2.10 协议「边缘机不缓存任何业务数据、重发补发全是上位机行为」冲突，用户明确「只登记、不落地、不自行选边、待我拍板」。
+- **结论**：构造循环用「装配期填充的可变接线对象」（`ModuleWiring` + `app_init.buildSystem()` 只做 new + 注入 + 返回）解耦，避免 `set_signal_sink` 式运行期 setter，并让 `control/` 不反向 import `modules/*`；业务口径未拍板时只落地中性机制（开关/阈值全部构造注入、模块内不默认不写死），两种口径均不裁定、不落地，登记到 `spec-digest.md` §5 与 `test-report.md` ⑥ 待用户拍板。停机串行顺序用模块级常量固定，Sink 回调只入队、`dispatchOutbox()` 才发送，重活不在回调内做阻塞 IO。
+- **归属**：本阶段已收敛；真实 config.ini / socket / 摄像头 / rknn / 真机端到端与线上键名映射留上板，EventCache 存废口径留用户裁决后。
+- **上升为**：无（无新规则 / 无新裁决；`decisions.md` 原文不改）。
+- **来源**：用户 2026-11-12 开工指令 + `stages/d/spec-digest.md` §3⑤ + `stages/d/test-report.md` ⑥ + `HANDOFF-d.md` §6。
+
 ## 4. 配置期已登记（非经验，供开工索引）
 
 - 用户明确：**不得自动修改 L1 契约层，契约变更必须给 diff 并等批准**（已固化于规则 01/04、SKILL.md §6）。
