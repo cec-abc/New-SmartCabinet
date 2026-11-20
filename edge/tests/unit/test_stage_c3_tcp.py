@@ -1,4 +1,7 @@
 """c3 TCP 模块单元测试：退避重连 / 心跳去重 / 半包粘包 / 状态机去重 / FakeSocket 联调。"""
+## @file edge/tests/unit/test_stage_c3_tcp.py
+## @brief c3 TCP 模块单元测试：退避重连 / 心跳去重 / 半包粘包 / 状态机去重 / FakeSocket 联调
+## @author 袁燕
 from __future__ import annotations
 
 import json
@@ -262,7 +265,7 @@ def test_c3_5_fakesocket_integration() -> None:
     assert socket.closed
 
 
-## @brief c3-6 真实 onLinkDown 触发 UP→DOWN→再 UP（修复重连线程幂等无法重启）
+## @brief c3-6 真实 onLinkDown 触发 UP→DOWN→再 UP（验证重连线程可重复拉起，不受单次启动限制）
 def test_c3_x_relink_after_down() -> None:
     frame = {"type": "signal", "uptime_sec": 10, "software_version": "1.0"}
     payload = (json.dumps(frame) + "\n").encode("utf-8")

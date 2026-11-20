@@ -1,4 +1,7 @@
-"""d 控制、装配与端到端单元测试：事件分发 / 缓存补发 / 停机串行 / 进程锁。"""
+"""d 控制、装配与端到端单元测试：事件分发 / 停机串行 / 进程锁。"""
+## @file edge/tests/unit/test_stage_d_control.py
+## @brief d 控制、装配与端到端单元测试：事件分发 / 停机串行 / 进程锁
+## @author 袁燕
 from __future__ import annotations
 
 import ast
@@ -16,11 +19,12 @@ from edge.control.edge_control import (
     STOP_TCP,
     STOP_USB,
     AsyncHandler,
+    CachedEvent,
     EdgeControl,
     FailureFrameBuilder,
+    FrameSender,
     ModuleWiring,
 )
-from edge.control.event_cache import CachedEvent, EventCache, FrameSender
 from edge.exceptions import EdgeError, ErrorCode
 from edge.interfaces.i_camera import FrameImage, ICameraDevice
 from edge.interfaces.i_logger import ILogger
@@ -144,14 +148,12 @@ class CallTrace:
 #  @param sender 帧发送器
 #  @param logger 日志 Fake
 #  @param handlers 注入的分发表
-#  @param enabled 补发开关
 #  @param linkStarter 链路启动器
 #  @param logStarter 日志启动器
 #  @param logStopper 日志停机器
 #  @return 装配参数
 def makeParts(root: Path, sender: RecordingSender, logger: FakeLogger,
               handlers: dict[str, AsyncHandler] | None = None,
-              enabled: bool = True,
               linkStarter: Callable[[TcpControlLayer], None] | None = None,
               logStarter: Callable[[], None] | None = None,
               logStopper: Callable[[], None] | None = None) -> AssemblyParts:
@@ -192,7 +194,6 @@ def makeParts(root: Path, sender: RecordingSender, logger: FakeLogger,
         maxFrameSize=TEST_MAX_FRAME_SIZE,
         heartIntervalSec=TEST_HEART_SEC,
         buildHeartbeat=fixedHeartbeat,
-        eventCacheEnabled=enabled,
         asyncHandlers=handlers if handlers is not None else {},
         failureFrameBuilder=failureBuilder,
         frameSender=frameSender,
@@ -206,15 +207,12 @@ def makeParts(root: Path, sender: RecordingSender, logger: FakeLogger,
 #  @param logger 日志 Fake
 #  @param sender 帧发送器
 #  @param handlers 注入的分发表
-#  @param enabled 补发开关
 #  @return 控制层与接线二元组
 def makeControl(logger: FakeLogger, sender: RecordingSender,
-                handlers: dict[str, AsyncHandler] | None = None,
-                enabled: bool = True) -> tuple[EdgeControl, ModuleWiring]:
+                handlers: dict[str, AsyncHandler] | None = None) -> tuple[EdgeControl, ModuleWiring]:
     wiring = ModuleWiring()
-    cache = EventCache(enabled, logger)
     control = EdgeControl(
-        logger, handlers if handlers is not None else {}, wiring, cache,
+        logger, handlers if handlers is not None else {}, wiring,
         sender.send, fixedFailure,
     )
     return control, wiring
@@ -269,86 +267,16 @@ def test_d_1_l1_sink_contracts_and_camel_case(tmp_path: Path) -> None:
     assert hasattr(control, "onCaptureSuccess")
 
 
-## @brief 对应验收项 d-2：enabled=true 按入队顺序补发，seq 只填不用
-def test_d_2_cache_flush_when_enabled(tmp_path: Path) -> None:
-    sender = RecordingSender()
-    logger = FakeLogger()
-    cache = EventCache(True, logger)
-    for index in range(3):
-        cache.cacheEvent({"type": "ack", "index": index})
-
-    assert cache.isEnabled() is True
-    assert cache.pendingCount() == 3
-    assert [event["seq"] for event in cache.pendingEvents()] == [1, 2, 3]
-    assert cache.flush(sender.send) == 3
-    assert [frame["index"] for frame in sender.frames] == [0, 1, 2]
-    assert cache.pendingCount() == 0
-    assert any("补发 3 条" in record[1] for record in logger.infoRecords)
-
-
-## @brief 对应验收项 d-2：enabled=false 丢弃缓存，发送器零调用
-def test_d_2_cache_discard_when_disabled(tmp_path: Path) -> None:
-    sender = RecordingSender()
-    logger = FakeLogger()
-    cache = EventCache(False, logger)
-    cache.cacheEvent({"type": "ack"})
-    cache.cacheEvent({"type": "ack"})
-
-    assert cache.flush(sender.send) == 0
-    assert sender.frames == []
-    assert cache.pendingCount() == 0
-    assert any("丢弃断线期间 2 条" in record[1] for record in logger.infoRecords)
-
-
-## @brief 对应验收项 d-2 / D-03：重复事件不去重，无 seenSeq / seq 比较逻辑
-def test_d_2_seq_only_filled_never_used_for_dedup(tmp_path: Path) -> None:
-    sender = RecordingSender()
-    cache = EventCache(True)
-    same: CachedEvent = {"type": "ack", "item": "wrench"}
-    cache.cacheEvent(same)
-    cache.cacheEvent(same)
-    cache.cacheEvent(same)
-
-    assert cache.pendingCount() == 3
-    assert [event["seq"] for event in cache.pendingEvents()] == [1, 2, 3]
-    assert cache.flush(sender.send) == 3
-    assert len(sender.frames) == 3
-    assert not hasattr(cache, "seenSeq")
-    assert not hasattr(cache, "_seenSeq")
-
-
-## @brief 对应验收项 d-2：DOWN 期间入缓存、UP 时补发，发送只发生在非回调上下文
-def test_d_2_link_down_caches_and_link_up_flushes(tmp_path: Path) -> None:
-    sender = RecordingSender()
-    control, _ = makeControl(FakeLogger(), sender, enabled=True)
-    control.onLinkDown("recv empty", "RECV")
-    assert control.isLinkUp() is False
-
-    control.onRecognitionResult(1, {"type": "recognize_ack", "items": []}, "req-1")
-    control.onCaptureError(2, EdgeError(ErrorCode.CAPTURE, "采集失败"))
-    assert sender.frames == []
-    assert control.getOutboxCount() == 2
-    assert control.dispatchOutbox() == 2
-    assert sender.frames == []
-
-    control.onLinkUp()
-    assert control.isLinkUp() is True
-    assert len(sender.frames) == 2
-    assert sender.frames[0]["type"] == "recognize_ack"
-    assert sender.frames[1]["type"] == "error"
-    assert control.getOutboxCount() == 0
-
-
 ## @brief 对应验收项 d-2：UP 时 dispatchOutbox 直发，不进缓存
 def test_d_2_dispatch_outbox_sends_when_up(tmp_path: Path) -> None:
     sender = RecordingSender()
-    control, _ = makeControl(FakeLogger(), sender, enabled=False)
+    control, _ = makeControl(FakeLogger(), sender)
     control.onLinkUp()
-    control.onRecognitionResult(1, {"type": "ack", "seq": 99}, "req-1")
+    control.onRecognitionResult(1, {"type": "ack"}, "req-1")
     assert control.dispatchOutbox() == 1
     assert len(sender.frames) == 1
-    ## 业务 payload 自带的 seq 不被改写或用于判重
-    assert sender.frames[0]["seq"] == 99
+    assert sender.frames[0]["type"] == "recognize_ack"
+    assert sender.frames[0]["request_id"] == "req-1"
 
 
 ## @brief 对应验收项 d-3：一键停机严格串行 USB → RECOGNITION → TCP → LOG

@@ -1,4 +1,7 @@
-"""阶段 a 补强单测：接口契约四要素、Fake 签名对齐、FrameData 处置、9 处字段标注。"""
+"""阶段 a 补强单测：接口契约四要素、Fake 签名一致、FrameData 处置、9 处字段标注。"""
+## @file edge/tests/unit/test_stage_a_contract_alignment.py
+## @brief 阶段 a 补强单测：接口契约四要素、Fake 签名一致、FrameData 处置、9 处字段标注
+## @author 袁燕
 from __future__ import annotations
 
 import ast
@@ -8,7 +11,9 @@ from pathlib import Path
 from typing import Any
 
 from edge.interfaces.i_camera import ICameraDevice
+from edge.interfaces.i_camera_focus import ICameraFocus
 from edge.interfaces.i_config import IConfig
+from edge.interfaces.i_frame_sink import IFrameSink
 from edge.interfaces.i_logger import ILogger
 from edge.interfaces.i_platform import IPlatformAdapter
 from edge.interfaces.i_recognition_engine import IRecognitionEngine
@@ -16,7 +21,9 @@ from edge.interfaces.i_sinks import ICaptureSink, IRecognitionSink, SignalSink
 from edge.interfaces.i_socket import ISocket
 from edge.interfaces.i_thread import IThread
 from edge.tests.fakes.fake_camera_device import FakeCameraDevice
+from edge.tests.fakes.fake_camera_focus import FakeCameraFocus
 from edge.tests.fakes.fake_config import FakeConfig
+from edge.tests.fakes.fake_frame_sink import FakeFrameSink
 from edge.tests.fakes.fake_logger import FakeLogger
 from edge.tests.fakes.fake_platform_adapter import FakePlatformAdapter
 from edge.tests.fakes.fake_recognition_engine import FakeRecognitionEngine
@@ -29,9 +36,10 @@ EDGE_ROOT: Path = Path(__file__).resolve().parents[2]
 INTERFACES_DIR: Path = EDGE_ROOT / "interfaces"
 FAKES_DIR: Path = EDGE_ROOT / "tests" / "fakes"
 
-## @brief 10 个接口 ABC 类，分布于 8 个 i_*.py 文件（i_sinks.py 含 3 个）
+## @brief 12 个接口 ABC 类，分布于 10 个 i_*.py 文件（i_sinks.py 含 3 个）
 INTERFACE_CLASSES: tuple[Any, ...] = (
     ICameraDevice,
+    ICameraFocus,
     IConfig,
     ILogger,
     IPlatformAdapter,
@@ -39,11 +47,12 @@ INTERFACE_CLASSES: tuple[Any, ...] = (
     SignalSink,
     ICaptureSink,
     IRecognitionSink,
+    IFrameSink,
     ISocket,
     IThread,
 )
 
-## @brief a-2 的 31 对签名逐一对齐表：(接口类, Fake 类, 方法名, 参数名, 返回注解字符串)
+## @brief a-2 的 37 对签名逐一比对表：(接口类, Fake 类, 方法名, 参数名, 返回注解字符串)
 ALIGNMENT_CASES: tuple[tuple[Any, Any, str, tuple[str, ...], str], ...] = (
     (IConfig, FakeConfig, "get", ("self", "section", "key", "default"), "Any"),
     (ILogger, FakeLogger, "rx", ("self", "module", "data"), "None"),
@@ -61,6 +70,15 @@ ALIGNMENT_CASES: tuple[tuple[Any, Any, str, tuple[str, ...], str], ...] = (
     (ICameraDevice, FakeCameraDevice, "readFrame", ("self",), "FrameImage | None"),
     (ICameraDevice, FakeCameraDevice, "close", ("self",), "None"),
     (ICameraDevice, FakeCameraDevice, "getStatus", ("self",), "CameraStatus"),
+    (ICameraFocus, FakeCameraFocus, "setAutoFocus", ("self", "enabled"), "None"),
+    (ICameraFocus, FakeCameraFocus, "setFocusPosition", ("self", "position"), "None"),
+    (ICameraFocus, FakeCameraFocus, "getFocusPosition", ("self",), "float"),
+    (ICameraFocus, FakeCameraFocus, "setZoomPosition", ("self", "position"), "None"),
+    (ICameraFocus, FakeCameraFocus, "getZoomPosition", ("self",), "float"),
+    (
+        IFrameSink, FakeFrameSink, "onFrameCaptured",
+        ("self", "workerId", "frames", "requestId"), "None",
+    ),
     (
         IRecognitionEngine, FakeRecognitionEngine, "loadModel",
         ("self", "path"), "None",
@@ -112,7 +130,7 @@ ALIGNMENT_CASES: tuple[tuple[Any, Any, str, tuple[str, ...], str], ...] = (
 )
 
 
-## @brief 反射断言 31 个抽象方法体只有隐式 None 常量（零实现、无逻辑分支）
+## @brief 反射断言 37 个抽象方法体只有隐式 None 常量（零实现、无逻辑分支）
 # 对应验收项 a-1：interfaces/ 零实现
 def testInterfaceAbstractMethodBodiesCarryNoImplementation() -> None:
     checked: list[str] = []
@@ -122,7 +140,7 @@ def testInterfaceAbstractMethodBodiesCarryNoImplementation() -> None:
             assert method.__isabstractmethod__ is True
             assert method.__code__.co_consts == (None,)
             checked.append(f"{cls.__name__}.{methodName}")
-    assert len(checked) == 31
+    assert len(checked) == 37
     assert checked[0] == "ICameraDevice.close"
     assert checked[-1] == "IThread.stop"
 
@@ -132,6 +150,8 @@ def testInterfaceAbstractMethodBodiesCarryNoImplementation() -> None:
 def testInterfaceMethodNamesAreAllCamelCase() -> None:
     expected: dict[str, tuple[str, ...]] = {
         "ICameraDevice": ("close", "getStatus", "open", "readFrame"),
+        "ICameraFocus": ("getFocusPosition", "getZoomPosition", "setAutoFocus",
+                         "setFocusPosition", "setZoomPosition"),
         "IConfig": ("get",),
         "ILogger": ("error", "info", "rx", "tx"),
         "IPlatformAdapter": ("joinPath", "lockFile", "monotonicClock", "newline", "signalMap"),
@@ -139,6 +159,7 @@ def testInterfaceMethodNamesAreAllCamelCase() -> None:
         "SignalSink": ("onFrameError", "onLinkDown", "onLinkUp", "onSignalDecoded"),
         "ICaptureSink": ("onCaptureError", "onCaptureSuccess"),
         "IRecognitionSink": ("onRecognitionError", "onRecognitionResult"),
+        "IFrameSink": ("onFrameCaptured",),
         "ISocket": ("close", "connect", "recv", "send"),
         "IThread": ("isRunning", "start", "stop"),
     }
@@ -153,7 +174,7 @@ def testInterfaceMethodNamesAreAllCamelCase() -> None:
         assert public == expected[cls.__name__], cls.__name__
         violations = [name for name in public if "_" in name or name[0].isupper()]
         assert violations == [], cls.__name__
-    assert len(expected) == 10
+    assert len(expected) == 12
 
 
 ## @brief AST 逐文件 import 清单 + 运行时模块对象反射双证据，断言零业务 import
@@ -162,7 +183,9 @@ def testInterfaceModulesImportNoBusinessModules() -> None:
     expected: dict[str, list[str]] = {
         "__init__": ["__future__"],
         "i_camera": ["__future__", "abc"],
+        "i_camera_focus": ["__future__", "abc"],
         "i_config": ["__future__", "abc", "typing"],
+        "i_frame_sink": ["__future__", "abc"],
         "i_logger": ["__future__", "abc"],
         "i_platform": ["__future__", "abc", "typing"],
         "i_recognition_engine": ["__future__", "abc", "edge.interfaces.i_camera"],
@@ -209,7 +232,9 @@ def testInterfaceDoxygenMarkersCovered() -> None:
     expected: dict[str, tuple[int, int, int]] = {
         "__init__": (0, 0, 0),
         "i_camera": (7, 0, 4),
+        "i_camera_focus": (7, 3, 5),
         "i_config": (2, 3, 1),
+        "i_frame_sink": (3, 3, 1),
         "i_logger": (5, 9, 4),
         "i_platform": (7, 2, 5),
         "i_recognition_engine": (4, 2, 2),
@@ -225,11 +250,11 @@ def testInterfaceDoxygenMarkersCovered() -> None:
         assert source.count("@return") == ret, stem
         assert (ast.get_docstring(ast.parse(source)) or "") != "", stem
         totalBrief += brief
-    assert totalBrief == 47
+    assert totalBrief == 57
 
 
-## @brief 31 对方法逐一比较 inspect.signature，参数名与返回注解同时锚定具体值
-# 对应验收项 a-2：8 个 Fake 与 8 个接口签名逐一对齐
+## @brief 37 对方法逐一比较 inspect.signature，参数名与返回注解同时锚定具体值
+# 对应验收项 a-2：8 个 Fake 与 8 个接口签名逐一比对一致
 def testAllFakeMethodSignaturesAlignWithInterfaces() -> None:
     aligned: list[str] = []
     for iface, fake, method, params, returnAnnotation in ALIGNMENT_CASES:
@@ -239,16 +264,16 @@ def testAllFakeMethodSignaturesAlignWithInterfaces() -> None:
         assert ifaceSig.return_annotation == returnAnnotation, f"{iface.__name__}.{method}"
         assert fakeSig == ifaceSig, f"{iface.__name__}.{method}"
         aligned.append(f"{iface.__name__}.{method}")
-    assert len(aligned) == 31
+    assert len(aligned) == 37
     assert aligned[0] == "IConfig.get"
     assert aligned[-1] == "IRecognitionSink.onRecognitionError"
-    assert len({case[1] for case in ALIGNMENT_CASES}) == 10
-    assert len(list(INTERFACES_DIR.glob("i_*.py"))) == 8
-    assert len(list(FAKES_DIR.glob("fake_*.py"))) == 8
+    assert len({case[1] for case in ALIGNMENT_CASES}) == 12
+    assert len(list(INTERFACES_DIR.glob("i_*.py"))) == 10
+    assert len(list(FAKES_DIR.glob("fake_*.py"))) == 10
 
 
 ## @brief 10 个 Fake 均可实例化且 isinstance / issubclass 对应接口契约
-# 对应验收项 a-2：8 个 Fake 与 8 个接口签名逐一对齐
+# 对应验收项 a-2：8 个 Fake 与 8 个接口签名逐一比对一致
 def testAllFakesAreInstantiableSubclassesOfInterfaces() -> None:
     pairs: tuple[tuple[Any, Any], ...] = (
         (FakeConfig, IConfig),
@@ -256,6 +281,8 @@ def testAllFakesAreInstantiableSubclassesOfInterfaces() -> None:
         (FakeThread, IThread),
         (FakeSocket, ISocket),
         (FakeCameraDevice, ICameraDevice),
+        (FakeCameraFocus, ICameraFocus),
+        (FakeFrameSink, IFrameSink),
         (FakeRecognitionEngine, IRecognitionEngine),
         (FakePlatformAdapter, IPlatformAdapter),
         (FakeSignalSink, SignalSink),
@@ -268,7 +295,7 @@ def testAllFakesAreInstantiableSubclassesOfInterfaces() -> None:
         assert isinstance(instance, iface) is True
         assert issubclass(fake, iface) is True
         results.append(f"{fake.__name__}:{iface.__name__}")
-    assert len(results) == 10
+    assert len(results) == 12
     assert results[0] == "FakeConfig:IConfig"
 
 
@@ -301,6 +328,7 @@ def testContractTestFunctionsAreCollectableAndExecutable() -> None:
             "testAllFakeMethodsCallable",
             "testAllFakesSatisfyContracts",
             "testAllSinkFakesCallable",
+            "testFakeCameraFocusSatisfiesContract",
             "testFakeLoggerRecordsFourMethods",
             "testInterfacesAreAbstract",
         ],
@@ -324,7 +352,7 @@ def testContractTestFunctionsAreCollectableAndExecutable() -> None:
         for name in names:
             assert callable(getattr(module, name)) is True
             count += 1
-    assert count == 10
+    assert count == 11
     foundation = importlib.import_module("edge.tests.contract.test_phase0_foundation")
     windowsOnly = getattr(foundation, "windowsOnly")
     assert tuple(inspect.signature(windowsOnly).parameters) == ("reason",)

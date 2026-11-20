@@ -1,0 +1,24 @@
+[
+  {
+    "backend": "onnxruntime",
+    "available": true,
+    "provider": "CPUExecutionProvider",
+    "model": "D:\\CFDZ\\BYJSJ\\New-SmartCabinet\\weights\\yolov8n.onnx",
+    "modelInput": [
+      1280,
+      1280
+    ],
+    "rounds": 20,
+    "avgMsPerInfer": 677.35,
+    "fpsCeiling": 1.48
+  },
+  {
+    "backend": "ultralytics",
+    "available": true,
+    "model": "D:\\CFDZ\\BYJSJ\\New-SmartCabinet\\weights\\yolov8n.pt",
+    "imgsz": 640,
+    "rounds": 20,
+    "avgMsPerInfer": 143.75,
+    "fpsCeiling": 6.96
+  }
+]

@@ -1,0 +1,209 @@
+{
+  "backend": "CAP_DSHOW",
+  "rows": [
+    {
+      "request": [
+        640,
+        480
+      ],
+      "readback": [
+        640,
+        480
+      ],
+      "actual": [
+        640,
+        480
+      ],
+      "jpegBytes": 83198,
+      "sharpnessFull": 1054.05,
+      "sharpnessNormalized": 707.03
+    },
+    {
+      "request": [
+        1024,
+        768
+      ],
+      "readback": [
+        1280,
+        720
+      ],
+      "actual": [
+        1280,
+        720
+      ],
+      "jpegBytes": 166613,
+      "sharpnessFull": 582.12,
+      "sharpnessNormalized": 712.69
+    },
+    {
+      "request": [
+        1280,
+        720
+      ],
+      "readback": [
+        1280,
+        720
+      ],
+      "actual": [
+        1280,
+        720
+      ],
+      "jpegBytes": 169000,
+      "sharpnessFull": 583.26,
+      "sharpnessNormalized": 708.67
+    },
+    {
+      "request": [
+        1600,
+        1200
+      ],
+      "readback": [
+        1920,
+        1080
+      ],
+      "actual": [
+        1920,
+        1080
+      ],
+      "jpegBytes": 307229,
+      "sharpnessFull": 385.97,
+      "sharpnessNormalized": 682.39
+    },
+    {
+      "request": [
+        1920,
+        1080
+      ],
+      "readback": [
+        1920,
+        1080
+      ],
+      "actual": [
+        1920,
+        1080
+      ],
+      "jpegBytes": 422650,
+      "sharpnessFull": 466.78,
+      "sharpnessNormalized": 863.15
+    },
+    {
+      "request": [
+        2048,
+        1536
+      ],
+      "readback": [
+        2048,
+        1536
+      ],
+      "actual": [
+        2048,
+        1536
+      ],
+      "jpegBytes": 379681,
+      "sharpnessFull": 371.09,
+      "sharpnessNormalized": 621.07
+    },
+    {
+      "request": [
+        2592,
+        1944
+      ],
+      "readback": [
+        2592,
+        1944
+      ],
+      "actual": [
+        2592,
+        1944
+      ],
+      "jpegBytes": 590718,
+      "sharpnessFull": 312.31,
+      "sharpnessNormalized": 658.02
+    },
+    {
+      "request": [
+        3840,
+        2160
+      ],
+      "readback": [
+        3840,
+        2160
+      ],
+      "actual": [
+        3840,
+        2160
+      ],
+      "jpegBytes": 784099,
+      "sharpnessFull": 344.74,
+      "sharpnessNormalized": 705.93
+    }
+  ],
+  "comparisons": [
+    {
+      "big": [
+        3840,
+        2160
+      ],
+      "small": [
+        2592,
+        1944
+      ],
+      "psnr": 15.94
+    },
+    {
+      "big": [
+        3840,
+        2160
+      ],
+      "small": [
+        1920,
+        1080
+      ],
+      "psnr": 25.28
+    },
+    {
+      "big": [
+        2592,
+        1944
+      ],
+      "small": [
+        1920,
+        1080
+      ],
+      "psnr": 16.28
+    },
+    {
+      "big": [
+        2048,
+        1536
+      ],
+      "small": [
+        1600,
+        1200
+      ],
+      "psnr": 16.31
+    },
+    {
+      "big": [
+        1920,
+        1080
+      ],
+      "small": [
+        1280,
+        720
+      ],
+      "psnr": 30.78
+    },
+    {
+      "big": [
+        1280,
+        720
+      ],
+      "small": [
+        640,
+        480
+      ],
+      "psnr": 16.06
+    }
+  ]
+}

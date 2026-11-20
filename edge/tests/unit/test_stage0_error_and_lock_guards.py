@@ -1,9 +1,13 @@
 """阶段 0 补强单测：ErrorCode 五码格式、EdgeError 抛捕、平台工厂分支与进程锁边界。"""
+## @file edge/tests/unit/test_stage0_error_and_lock_guards.py
+## @brief 阶段 0 补强单测：ErrorCode 五码格式、EdgeError 抛捕、平台工厂分支与进程锁边界
+## @author 袁燕
 from __future__ import annotations
 
 import inspect
 import io
 import sys
+from typing import BinaryIO
 from unittest.mock import patch
 
 import pytest
@@ -87,15 +91,14 @@ def testFactoryRejectsUnsupportedPlatformWithConfig() -> None:
     assert str(error) == "[CONFIG] 不支持的平台: freebsd"
 
 
-## @brief Linux 锁骨架抛内置异常且源码保留上板 TODO 与 fcntl.flock 提示
-# 对应验收项 0-3：Linux 分支 NotImplementedError + TODO 骨架
+## @brief Linux 锁已落地 fcntl.flock 真实实现：源码含 fcntl 调用且不再留 TODO/NotImplementedError
+# 对应验收项 0-3：Linux 分支文件锁由骨架升级为真实实现
 def testLinuxLockSkeletonMarksTodoAndRaisesExactMessage() -> None:
     source = inspect.getsource(LinuxAdapter.lockFile)
-    assert source.count("TODO") == 1
     assert source.count("fcntl.flock") == 1
-    with pytest.raises(NotImplementedError) as caught:
-        LinuxAdapter().lockFile("unused.lock")
-    assert str(caught.value) == "Linux 文件锁待上板实现"
+    assert "import fcntl" in source
+    assert "TODO" not in source
+    assert "NotImplementedError" not in source
 
 
 ## @brief Fake 模拟锁被占用返回 None，acquire 抛 CONFIG 且不重试
@@ -112,10 +115,14 @@ def testAcquireOccupiedLockRaisesConfigViaFake() -> None:
     assert lock.lockHandle is None
 
 
-## @brief 骨架内置异常转 EdgeError(CONFIG) 且保留 __cause__ 因果链
-# 对应验收项 0-4：内置异常不跨模块边界
+## @brief 适配器抛内置 NotImplementedError 时 acquire 转 EdgeError(CONFIG) 且保留 __cause__ 因果链
+# 对应验收项 0-4：内置异常不跨模块边界（用打桩适配器模拟骨架异常，不依赖具体平台）
 def testAcquireConvertsSkeletonErrorPreservingCause() -> None:
-    lock = ProcessFileLock(LinuxAdapter(), "edge_runtime.lock")
+    class RaisingAdapter(FakePlatformAdapter):
+        def lockFile(self, filePath: str) -> BinaryIO | None:
+            raise NotImplementedError("Linux 文件锁待上板实现")
+
+    lock = ProcessFileLock(RaisingAdapter(), "edge_runtime.lock")
     with pytest.raises(EdgeError) as caught:
         lock.acquire()
     error = caught.value
@@ -150,7 +157,7 @@ def testAcquireOrExitKeepsLockWhenAcquired() -> None:
 
 
 ## @brief release 关闭句柄并把状态置 None，重复调用安全
-# 对应验收项 0-4：release 幂等
+# 对应验收项 0-4：release 重复调用结果一致
 def testReleaseIsIdempotentAndClosesHandle() -> None:
     handle = io.BytesIO()
     adapter = FakePlatformAdapter(lockResult=handle)

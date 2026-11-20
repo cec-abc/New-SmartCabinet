@@ -1,4 +1,7 @@
 """套接字接口 Fake 实现。"""
+## @file edge/tests/fakes/fake_socket.py
+## @brief 套接字接口 Fake 实现
+## @author 袁燕
 from __future__ import annotations
 
 from edge.interfaces.i_socket import ISocket

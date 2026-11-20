@@ -15,6 +15,10 @@ from edge.base.base_thread import BaseThread
 from edge.exceptions import EdgeError, ErrorCode
 from edge.interfaces.i_logger import ILogger
 
+## @file edge/infra/log_manager.py
+## @brief 日志门面：单条阻塞队列异步落盘、按模式分文件、滚动清理与停机收尾
+## @author 袁燕
+
 ## @brief 日志类型常量
 TYPE_RX: str = "RX"
 TYPE_TX: str = "TX"
@@ -67,7 +71,7 @@ def buildRecord(
     }
     if stack is not None:
         record["stack"] = stack
-    ## 兜底把非基本类型转字符串，保证业务线程入队不抛异常
+    ## 把不能直接转成 JSON 的值转成字符串，保证业务线程入队不抛异常
     return json.dumps(record, ensure_ascii=False, default=str)
 
 
@@ -98,6 +102,7 @@ class LogFileWriter:
     #  @param diskFreeThreshold 磁盘剩余比例阈值，构造注入
     #  @param day 初始日期标签
     #  @param diskFreeRatio 磁盘剩余比例提供器
+    #  @return 无
     #  @raises EdgeError 日志文件不可打开（CONFIG）
     def __init__(
         self,
@@ -149,13 +154,14 @@ class LogFileWriter:
         except OSError as error:
             raise EdgeError(ErrorCode.CONFIG, f"日志文件不可用: {path}") from error
 
-    ## @brief 写入一行；必要时先滚动，落盘失败跳过本行保持后台线程存活
+    ## @brief 写入一行；必要时先滚动并检查磁盘清理，落盘失败跳过本行保持后台线程存活
     #  @param line 单行 JSON 记录
     #  @param day 记录日期标签
     #  @return 无
     def writeLine(self, line: str, day: str) -> None:
         size = len(line.encode("utf-8")) + len(LINE_BREAK.encode("utf-8"))
         self.rollIfNeeded(size, day)
+        self.purgeOldFiles()
         try:
             self._handle.write(line + LINE_BREAK)
             self._handle.flush()
@@ -164,7 +170,7 @@ class LogFileWriter:
             ## 日志落盘属必要容错：单行失败不阻断后台线程
             self._writeFailureCount += 1
 
-    ## @brief 跨天或超上限时切换文件并触发磁盘清理
+    ## @brief 跨天或超上限时切换文件；磁盘清理改由 writeLine 每次写入时检查
     #  @param incomingSize 待写字节数
     #  @param day 记录日期标签
     #  @return 无
@@ -178,7 +184,6 @@ class LogFileWriter:
         self._currentSize = 0
         self._currentPath = self.buildPath(day)
         self._handle = self.openHandle(self._currentPath)
-        self.purgeOldFiles()
 
     ## @brief 磁盘剩余比例低于阈值时删除最旧的历史文件
     #  @return 无
@@ -197,7 +202,7 @@ class LogFileWriter:
             if self._diskFreeRatio() >= self._diskFreeThreshold:
                 break
 
-    ## @brief 关闭当前句柄；重复调用幂等
+    ## @brief 关闭当前句柄；已经关掉的句柄不再重复关闭
     #  @return 无
     def closeHandle(self) -> None:
         if not self._handle.closed:
@@ -215,6 +220,7 @@ class LogExecutor(BaseThread):
     #  @param queuePollSec 队列 take 超时秒数，构造注入
     #  @param clock 时间提供器
     #  @param diskFreeRatio 磁盘剩余比例提供器
+    #  @return 无
     def __init__(
         self,
         records: Queue[str],
@@ -307,6 +313,7 @@ class LogManager(ILogger):
     #  @param clock 时间提供器，便于测试跨天
     #  @param diskFreeRatio 磁盘剩余比例提供器
     #  @param maxQueueSize 队列容量，0 表示无界
+    #  @return 无
     #  @raises EdgeError 日志目录不可创建（CONFIG）
     def __init__(
         self,
@@ -350,7 +357,7 @@ class LogManager(ILogger):
         )
         ## @brief 停机锁
         self._stopLock: Lock = Lock()
-        ## @brief 是否已停机，保证重复 stop 幂等
+        ## @brief 是否已停机，用于让重复 stop 只执行一次收尾
         self._stopped: bool = False
 
     ## @brief 获取全局唯一实例；首次调用注入参数，双检锁避免并发重复构造
@@ -434,12 +441,12 @@ class LogManager(ILogger):
     ) -> None:
         self._records.put(buildRecord(logType, module, payload, self._clock(), stack))
 
-    ## @brief 启动后台消费线程；BaseThread 保证重复 start 幂等
+    ## @brief 启动后台消费线程；BaseThread 保证重复 start 只拉起一次线程
     #  @return 无
     def start(self) -> None:
         self._executor.start()
 
-    ## @brief 停机：记统计、唤醒 take、清空队列并关闭句柄；重复调用幂等
+    ## @brief 停机：记统计、唤醒取队列、清空队列并关闭句柄；重复调用只执行一次收尾
     #  @param timeout 等待消费线程退出的最长秒数
     #  @return 无
     def stop(self, timeout: float = 3.0) -> None:

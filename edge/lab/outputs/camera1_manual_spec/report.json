@@ -1,0 +1,302 @@
+{
+  "backends": [
+    {
+      "name": "CAP_MSMF",
+      "modes": [
+        {
+          "request": [
+            8000,
+            6000
+          ],
+          "opened": true,
+          "fourcc": "\u0016\u0000\u0000\u0000",
+          "readback": [
+            8000,
+            6000
+          ],
+          "actual": [
+            8000,
+            6000
+          ],
+          "grabSeconds": 5.047,
+          "matched": true
+        },
+        {
+          "request": [
+            4000,
+            3000
+          ],
+          "opened": true,
+          "fourcc": "\u0016\u0000\u0000\u0000",
+          "readback": [
+            4000,
+            3000
+          ],
+          "actual": [
+            4000,
+            3000
+          ],
+          "grabSeconds": 0.812,
+          "matched": true
+        },
+        {
+          "request": [
+            3840,
+            2160
+          ],
+          "opened": true,
+          "fourcc": "\u0016\u0000\u0000\u0000",
+          "readback": [
+            3840,
+            2160
+          ],
+          "actual": [
+            3840,
+            2160
+          ],
+          "grabSeconds": 0.5,
+          "matched": true
+        },
+        {
+          "request": [
+            2592,
+            1944
+          ],
+          "opened": true,
+          "fourcc": "\u0016\u0000\u0000\u0000",
+          "readback": [
+            2048,
+            1536
+          ],
+          "actual": [
+            2048,
+            1536
+          ],
+          "grabSeconds": 0.812,
+          "matched": false
+        },
+        {
+          "request": [
+            2048,
+            1536
+          ],
+          "opened": true,
+          "fourcc": "\u0016\u0000\u0000\u0000",
+          "readback": [
+            2048,
+            1536
+          ],
+          "actual": [
+            2048,
+            1536
+          ],
+          "grabSeconds": 0.75,
+          "matched": true
+        },
+        {
+          "request": [
+            1920,
+            1080
+          ],
+          "opened": true,
+          "fourcc": "\u0016\u0000\u0000\u0000",
+          "readback": [
+            1920,
+            1080
+          ],
+          "actual": [
+            1920,
+            1080
+          ],
+          "grabSeconds": 0.516,
+          "matched": true
+        },
+        {
+          "request": [
+            1280,
+            720
+          ],
+          "opened": true,
+          "fourcc": "\u0016\u0000\u0000\u0000",
+          "readback": [
+            1280,
+            720
+          ],
+          "actual": [
+            1280,
+            720
+          ],
+          "grabSeconds": 0.516,
+          "matched": true
+        },
+        {
+          "request": [
+            800,
+            600
+          ],
+          "opened": true,
+          "fourcc": "\u0016\u0000\u0000\u0000",
+          "readback": [
+            800,
+            600
+          ],
+          "actual": [
+            800,
+            600
+          ],
+          "grabSeconds": 0.609,
+          "matched": true
+        }
+      ]
+    },
+    {
+      "name": "CAP_DSHOW",
+      "modes": [
+        {
+          "request": [
+            8000,
+            6000
+          ],
+          "opened": true,
+          "fourcc": "MJPG",
+          "readback": [
+            8000,
+            6000
+          ],
+          "actual": [
+            8000,
+            6000
+          ],
+          "grabSeconds": 2.656,
+          "matched": true
+        },
+        {
+          "request": [
+            4000,
+            3000
+          ],
+          "opened": true,
+          "fourcc": "MJPG",
+          "readback": [
+            4000,
+            3000
+          ],
+          "actual": [
+            4000,
+            3000
+          ],
+          "grabSeconds": 0.907,
+          "matched": true
+        },
+        {
+          "request": [
+            3840,
+            2160
+          ],
+          "opened": true,
+          "fourcc": "MJPG",
+          "readback": [
+            3840,
+            2160
+          ],
+          "actual": [
+            3840,
+            2160
+          ],
+          "grabSeconds": 0.453,
+          "matched": true
+        },
+        {
+          "request": [
+            2592,
+            1944
+          ],
+          "opened": true,
+          "fourcc": "MJPG",
+          "readback": [
+            2592,
+            1944
+          ],
+          "actual": [
+            2592,
+            1944
+          ],
+          "grabSeconds": 0.703,
+          "matched": true
+        },
+        {
+          "request": [
+            2048,
+            1536
+          ],
+          "opened": true,
+          "fourcc": "MJPG",
+          "readback": [
+            2048,
+            1536
+          ],
+          "actual": [
+            2048,
+            1536
+          ],
+          "grabSeconds": 0.687,
+          "matched": true
+        },
+        {
+          "request": [
+            1920,
+            1080
+          ],
+          "opened": true,
+          "fourcc": "YUY2",
+          "readback": [
+            1920,
+            1080
+          ],
+          "actual": [
+            1920,
+            1080
+          ],
+          "grabSeconds": 0.875,
+          "matched": true
+        },
+        {
+          "request": [
+            1280,
+            720
+          ],
+          "opened": true,
+          "fourcc": "MJPG",
+          "readback": [
+            1280,
+            720
+          ],
+          "actual": [
+            1280,
+            720
+          ],
+          "grabSeconds": 0.312,
+          "matched": true
+        },
+        {
+          "request": [
+            800,
+            600
+          ],
+          "opened": true,
+          "fourcc": "YUY2",
+          "readback": [
+            800,
+            600
+          ],
+          "actual": [
+            800,
+            600
+          ],
+          "grabSeconds": 0.422,
+          "matched": true
+        }
+      ]
+    }
+  ]
+}

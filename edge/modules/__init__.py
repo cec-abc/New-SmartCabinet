@@ -1,2 +1,5 @@
-"""TCP 模块包：链路状态机、退避重连、心跳与解码。"""
+"""业务模块包：TCP 通信、USB 采集与图像识别三个子模块。"""
+## @file edge/modules/__init__.py
+## @brief 业务模块包：TCP 通信、USB 采集与图像识别三个子模块
+## @author 袁燕
 from __future__ import annotations

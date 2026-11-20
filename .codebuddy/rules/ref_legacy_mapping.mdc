@@ -32,12 +32,12 @@ enabled: true
 | `on_capture_success` / `on_recognition_result` | `onCaptureSuccess` / `onRecognitionResult` | L1 接口表 |
 | `_split_frames` / `_decode_and_parse` | `splitFrames` / `decodeAndParse` | 私有方法同样 camelCase |
 | `selfCheck` / `SelfChecker.check_all` | 留空接口 + TODO | 裁决 D-01 |
-| `PendingRequest` 重发 / 补发去重 | 不实现 | 裁决 D-03 |
+| `PendingRequest` 重发 / 补发去重 | 已删除该功能：断链不缓存、恢复不补发 | 裁决 D-20（原 D-03 作废） |
 
 ## 概念差异（易踩坑）
 
 - 旧图的「能力降级」「自检线程」在方案 A 中无对应交付；按 D-01 只留空接口。
 - 旧图在 DOWN/CONNECTING 阶段仍出现心跳、解码线程；按 D-02 只有 UP 后才启动。
-- 旧图把 `EventCache` 画成带 `seq` 去重的补发队列；按 D-03 去重不做，`seq` 只填不用。
+- 旧图把 `EventCache` 画成带 `seq` 去重的补发队列；该功能已删除（D-20）：断链不缓存、恢复不补发，`seq` 随缓存队列一并删除。
 - 旧图 `IConfig` 有 `getLogDir/getMaxFileSize/getTcpPort/getReconnectBackoff` 等专用 getter；
   L1 只保留通用 `get(section, key, default=None)`。

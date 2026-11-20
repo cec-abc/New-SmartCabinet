@@ -1,0 +1,936 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>智能工具柜边缘计算机工程 · 关键类图（分组折叠版）</title>
+<style>
+  :root{
+    --bg:#080e1a; --panel:#111c2f; --line:#1e293b; --txt:#e8eef7; --muted:#9fb0c7;
+    --dep:#38bdf8; --inh:#fbbf24; --wire:#c084fc; --hl:#34d399; --bypass:#e0c46c;
+    --accent:#7dd3fc;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0;background:
+      radial-gradient(1200px 600px at 12% -10%, #16243c 0%, transparent 60%),
+      radial-gradient(900px 500px at 92% 0%, #1a1630 0%, transparent 55%),
+      var(--bg);
+    color:var(--txt);
+    font-family:"Microsoft YaHei","PingFang SC","Source Han Sans SC","Segoe UI",sans-serif;
+    -webkit-font-smoothing:antialiased}
+  .wrap{padding:26px 26px 46px;max-width:1920px;margin:0 auto}
+
+  /* ---------- 标题与导读 ---------- */
+  .kicker{font-size:12.5px;letter-spacing:.42em;color:#6f88a8;text-transform:uppercase;margin-bottom:8px}
+  h1{font-size:30px;margin:0 0 10px;letter-spacing:.6px;font-weight:700;
+     background:linear-gradient(92deg,#e8eef7 0%,#8fd3ff 55%,#c8b6ff 100%);
+     -webkit-background-clip:text;background-clip:text;color:transparent}
+  .lead{margin:0 0 16px;max-width:1180px;font-size:14.5px;line-height:2.0;color:#b9c8dc;letter-spacing:.2px}
+  .lead b{color:#8fe3ff;font-weight:600}
+  .lead .k{color:#ffd88a;font-weight:600}
+  .guide{counter-reset:g;list-style:none;margin:0 0 18px;padding:16px 20px 16px 20px;max-width:1180px;
+    background:linear-gradient(180deg,rgba(20,32,52,.92),rgba(13,21,36,.92));
+    border:1px solid #24344f;border-left:4px solid var(--accent);border-radius:12px;
+    box-shadow:0 12px 34px rgba(0,0,0,.42)}
+  .guide li{counter-increment:g;position:relative;padding:0 0 0 40px;margin:0 0 9px;
+    font-size:14px;line-height:1.95;color:#cbd8e8}
+  .guide li:last-child{margin-bottom:0}
+  .guide li::before{content:counter(g);position:absolute;left:0;top:3px;width:26px;height:26px;border-radius:50%;
+    background:linear-gradient(160deg,#1e3a5c,#16233a);border:1px solid #3f6ea6;color:#9fdcff;
+    font-size:13px;font-weight:700;line-height:24px;text-align:center}
+  .guide b{color:#8fe3ff;font-weight:600}
+  .guide .g{color:#ffd88a;font-weight:600}
+
+  /* ---------- 工具条 ---------- */
+  .toolbar{display:flex;flex-wrap:wrap;gap:9px;align-items:center;margin:0 0 12px}
+  .toolbar .tl{font-size:12.5px;color:#7f93ad;margin-right:4px;letter-spacing:.4px}
+  button{font-family:inherit;font-size:12.5px;color:#cfe0f2;cursor:pointer;
+    background:linear-gradient(180deg,#182740,#111b2c);border:1px solid #2c4260;border-radius:8px;
+    padding:6px 13px;letter-spacing:.3px;transition:.16s}
+  button:hover{border-color:#4a7fb5;color:#eaf4ff;background:linear-gradient(180deg,#1e3050,#16233a)}
+  button.on{border-color:#34d399;color:#a7f3d0;box-shadow:0 0 0 1px rgba(52,211,153,.25) inset}
+  .tip{font-size:12.5px;color:#7f93ad;margin-left:auto}
+  .tip b{color:#9fdcff;font-weight:600}
+
+  /* ---------- 图区 ---------- */
+  .scroller{overflow:auto;border:1px solid var(--line);border-radius:12px;background:#060b14;
+    box-shadow:0 14px 40px rgba(0,0,0,.5)}
+  svg{display:block}
+  .ghead{cursor:pointer}
+
+  /* ---------- 图例 ---------- */
+  .legend{display:flex;flex-wrap:wrap;gap:10px 22px;align-items:center;margin:14px 0 0;font-size:13px;
+    background:linear-gradient(180deg,rgba(17,28,47,.92),rgba(11,18,32,.92));
+    border:1px solid var(--line);border-radius:12px;padding:12px 16px}
+  .lg{display:inline-flex;align-items:center;gap:8px;color:#c6d4e6}
+  .sw{width:34px;height:0;border-top-width:2.6px;display:inline-block;flex:0 0 auto}
+  .boxsw{width:20px;height:16px;border-radius:4px;display:inline-block;flex:0 0 auto}
+  .lg i{font-style:normal}
+  .lg .lb{color:#8fa3bd}
+
+  /* ---------- 面板 ---------- */
+  .panel{margin-top:16px;display:flex;flex-wrap:wrap;gap:16px}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px 16px;
+    font-size:13px;line-height:2.0;min-width:320px;flex:1}
+  .card h2{font-size:14px;margin:0 0 10px;color:#dce8f7;font-weight:700;letter-spacing:.5px;
+    padding-bottom:8px;border-bottom:1px solid #1f2d44}
+  .card code{background:#0a1120;border:1px solid #26374f;border-radius:4px;padding:1px 6px;
+    font-family:Consolas,monospace;font-size:12px;color:#9fe0ff}
+  .card b{color:#ffd88a;font-weight:600}
+  .ok{color:#34d399;font-weight:700}
+  .bad{color:#fb7185;font-weight:700}
+  .muted{color:#8fa3bd}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="kicker">Smart Cabinet · Edge Computer</div>
+  <h1>智能工具柜边缘计算机工程 · 关键类图（分组折叠版）</h1>
+  <p class="lead">
+    这张图回答一个问题：<b>边缘计算机这一套代码，是怎么把「上位机的一条识别指令」变成「一帧全柜实况」的</b>。
+    图里只画<b>跨层的关键依赖</b>（共 18 条，线上直接标接口名），层内的协作关系用<b>子舱归属</b>表达，不再逐条画箭头。
+    类名、接口名、方法名全部取自 <b>edge/</b> 下的真实代码。
+  </p>
+  <ol class="guide">
+    <li><b>先看左边一列</b>：<span class="g">① 入口层</span>只负责装配（new + 注入 + 返回，不写业务），<span class="g">② 控制层</span>是唯一能同时看见三个模块的人，<span class="g">③ 模块层</span>是 tcp / usb / recognition 三块互不引用的业务舱。</li>
+    <li><b>再看右边一列</b>：<span class="g">④ 基础层</span>是零实现契约（interfaces）、生命周期骨架（base）、平台适配（platform）、配置日志与对照表（infra）。</li>
+    <li><b>箭头的三种读法</b>：<b>实线蓝</b>＝依赖/调用方向（线上写了接口名）；<b>虚线黄空三角</b>＝继承或实现；<b>点线紫</b>＝<code>ModuleWiring</code> 的 Callable 注入（<b>不是</b> import）。</li>
+    <li><b>节点的三种颜色</b>：深色渐变＝正常主链路；<b>灰色渐变 + 白字 + 虚线框</b>＝待上板 / 未启用；<b>黄褐色</b>＝旁路（缓存 / 降级 / 复用）；<b>翠绿描边</b>＝本轮新增的类。</li>
+    <li><b>最容易迷失的是那条数据流</b>：右下角「数据流一条线」把它单独立了出来，照着 ①→⑥ 读一遍就通了；看不清时用工具条<b>折叠子舱</b>或<b>聚焦某一层</b>。</li>
+  </ol>
+
+  <div class="toolbar">
+    <span class="tl">折叠 / 聚焦</span>
+    <button id="btn-all">全部展开</button>
+    <button id="btn-fold">折叠全部子舱</button>
+    <button data-focus="entry">聚焦 ① 入口层</button>
+    <button data-focus="control">聚焦 ② 控制层</button>
+    <button data-focus="modules">聚焦 ③ 模块层</button>
+    <button data-focus="found">聚焦 ④ 基础层</button>
+    <span class="tip">画布 <b id="size-tip">—</b> ｜ 节点 <b id="node-tip">—</b> ｜ 关系 <b id="edge-tip">—</b></span>
+  </div>
+
+  <div class="scroller" id="scroller"><div id="host"></div></div>
+
+  <div class="legend">
+    <span class="lg"><i class="sw" style="border-top:2.6px solid var(--dep)"></i>实线＝依赖 / 调用方向（线上标注接口名）</span>
+    <span class="lg"><i class="sw" style="border-top:2.6px dashed var(--inh)"></i>虚线空三角＝继承或实现</span>
+    <span class="lg"><i class="sw" style="border-top:2.6px dotted var(--wire)"></i>点线＝间接持有（Callable 注入，不是 import）</span>
+    <span class="lg"><i class="boxsw" style="border:2px dashed #b9c6d6;background:linear-gradient(#9aa7b8,#6d7d92)"></i>灰虚框＝待上板 / 未启用</span>
+    <span class="lg"><i class="boxsw" style="border:2.6px solid var(--hl);background:linear-gradient(#17413f,#0f2a2a)"></i>翠绿描边＝本轮新增类</span>
+    <span class="lg"><i class="boxsw" style="border:1.6px solid var(--bypass);background:linear-gradient(#4a3a1c,#2e2411)"></i>黄褐色＝旁路（缓存 / 降级 / 复用）</span>
+    <span class="lg"><i class="boxsw" style="border:1.6px solid #5aa9e6;background:linear-gradient(#1d3a5c,#12263d)"></i>深色渐变＝正常主链路</span>
+    <span class="lg"><i class="lb">点子舱标题即可折叠 / 展开</i></span>
+  </div>
+
+  <div class="panel">
+    <div class="card" id="card-check">
+      <h2>布局自检</h2>
+      <div id="check-body">—</div>
+    </div>
+    <div class="card" id="card-dep">
+      <h2>依赖方向核验结论</h2>
+      <div id="dep-body">—</div>
+    </div>
+    <div class="card" id="card-note">
+      <h2>读图要点</h2>
+      <div id="note-body">—</div>
+    </div>
+  </div>
+</div>
+
+<script>
+"use strict";
+/* =======================================================================
+   关键类图 · 分组折叠版
+   数据驱动布局：分组 → 泳道 → 自动算坐标 → 自检重叠 / 文字超宽 → 出 SVG
+   ======================================================================= */
+
+/* ---------------- 尺寸常量（字号是硬指标：标题 ≥17，说明 ≥13） ---------------- */
+const CFG = {
+  titleFont: 19,      /* 节点标题字号 */
+  subFont: 14,        /* 节点说明字号 */
+  nodePadX: 20, nodePadY: 15,
+  titleLine: 27, subLine: 21,
+  colGap: 22, rowGap: 34,
+  grpPadX: 18, grpPadY: 16, grpHead: 104,    /* 子舱标题 + 一行舱内说明 + 两排连线标签 */
+  bandPadX: 22, bandPadY: 20, bandHead: 66,  /* 泳道标题条 */
+  gapTop: 150,        /* ① 与 ② 之间 */
+  gapMid: 380,        /* ② 与 ③ 之间：跨层走线通道 */
+  gapCol: 330,        /* 左列与右列之间的竖向通道 */
+  gapGrid: 84,        /* 右列子行间距 */
+  lanePad: 76,        /* 泳道底部给走线车道预留的高度 */
+  margin: 56,
+  legendH: 236,
+  flowH: 214
+};
+
+/* ---------------- 调色 ---------------- */
+const TONE = {
+  entry:    {c1:"#2b3d5c", c2:"#1b2739", bd:"#7aa2d8"},
+  control:  {c1:"#3a2b58", c2:"#241b39", bd:"#b58cf0"},
+  tcp:      {c1:"#14414f", c2:"#0e2c36", bd:"#5ec8e6"},
+  usb:      {c1:"#144538", c2:"#0d2f26", bd:"#5fd6a8"},
+  recog:    {c1:"#4a2438", c2:"#301722", bd:"#ef7f97"},
+  iface:    {c1:"#25304a", c2:"#172033", bd:"#8fb3ff"},
+  base:     {c1:"#2f3742", c2:"#1e242c", bd:"#9fb3c8"},
+  platform: {c1:"#23404a", c2:"#162b32", bd:"#7fd4c1"},
+  infra:    {c1:"#40381f", c2:"#2a2514", bd:"#e0c46c"},
+  exc:      {c1:"#3d2a3a", c2:"#271a26", bd:"#e89ac0"},
+  bypass:   {c1:"#4a3a1c", c2:"#2e2411", bd:"#e0c46c"}
+};
+const GRAY = {c1:"#98a6b8", c2:"#6d7d92", bd:"#c3cedb"};
+
+/* ---------------- 泳道 ---------------- */
+const BANDS = [
+  {id:"entry",   no:"①", title:"入口层 · main / app_init",
+   desc:"进程入口与依赖装配：只做 new + 注入 + 返回，不写业务逻辑"},
+  {id:"control", no:"②", title:"控制层 · control",
+   desc:"唯一跨模块协调者：实现四类 Sink，不 import 三个模块的具体类"},
+  {id:"modules", no:"③", title:"模块层 · modules/*",
+   desc:"tcp / usb / recognition 三块业务模块，彼此之间没有反向依赖"},
+  {id:"found",   no:"④", title:"基础层 · base / interfaces / platform / infra",
+   desc:"零实现契约、线程与服务基类、平台适配、配置 / 日志 / 对照表基础设施"}
+];
+
+/* ---------------- 子舱（层内用「归属」表达协作，不再逐条画箭头） ---------------- */
+const GROUPS = [
+  {id:"gA1", band:"entry", cols:4, rows:1, tone:"entry",   cap:"app_init 只装配，不跑业务",
+   title:"进程入口与装配"},
+  {id:"gA2", band:"entry", cols:2, rows:1, tone:"entry",   cap:"装配期绑定，业务期只调用",
+   title:"装配期句柄"},
+  {id:"gA3", band:"entry", cols:1, rows:1, tone:"entry",   cap:"真实 socket 上板后替换",
+   title:"骨架 · 待上板"},
+
+  {id:"gB1", band:"control", cols:3, rows:1, tone:"control", cap:"控制层是唯一能同时看见三个模块的人",
+   title:"控制者与接线"},
+  {id:"gB2", band:"control", cols:1, rows:1, tone:"bypass", cap:"断链缓存 · 恢复补发（旁路）",
+   title:"缓存与出网"},
+
+  {id:"gC1", band:"modules", cols:3, rows:2, tone:"tcp",   cap:"组帧切帧 · 心跳 · 退避重连",
+   title:"modules/tcp"},
+  {id:"gC2", band:"modules", cols:2, rows:2, tone:"usb",   cap:"双路采集 · 对焦 · 帧流回调",
+   title:"modules/usb"},
+  {id:"gC3", band:"modules", cols:3, rows:3, tone:"recog", cap:"对照表链路 · 拼接裁剪 · 协议条目",
+   title:"modules/recognition"},
+
+  {id:"gD1", band:"found", cols:4, rows:1, tone:"iface",  cap:"零实现；四个 Sink 由 EdgeControl 实现",
+   title:"interfaces · 事件回调契约"},
+  {id:"gD2", band:"found", cols:2, rows:1, tone:"base",   cap:"线程与服务基类",
+   title:"base · 生命周期骨架"},
+  {id:"gD3", band:"found", cols:4, rows:2, tone:"iface",  cap:"零实现、零业务依赖",
+   title:"interfaces · 设备 / 引擎 / 通用契约"},
+  {id:"gD4", band:"found", cols:2, rows:2, tone:"platform", cap:"唯一 sys.platform 分支",
+   title:"platform · 平台适配与进程锁"},
+  {id:"gD5", band:"found", cols:3, rows:2, tone:"infra",  cap:"基础设施，不引用任何 modules",
+   title:"infra · 配置 / 日志 / 对照表"},
+  {id:"gD6", band:"found", cols:2, rows:1, tone:"exc",    cap:"唯一业务异常",
+   title:"根级 exceptions"}
+];
+
+/* ---------------- 节点（类名 / 接口名 / 说明均取自 edge/ 真实代码） ---------------- */
+const NODES = [
+  /* 入口层 */
+  {id:"main",         g:"gA1", label:"main()",             sub:["进程锁 → 装配 → 信号 → 启停"]},
+  {id:"parts",        g:"gA1", label:"AssemblyParts",      sub:["全部构造注入参数"]},
+  {id:"buildSystem",  g:"gA1", label:"buildSystem()",      sub:["只做 new + 注入 + 返回"]},
+  {id:"defaultParts", g:"gA1", label:"defaultParts()",     sub:["读 config.ini · 装载对照表"]},
+  {id:"captureTrig",  g:"gA2", label:"CaptureTrigger",     sub:["triggerCapture(request_id)"]},
+  {id:"cameraStatus", g:"gA2", label:"CameraStatusHandle", sub:["readStatus() → 相机状态"]},
+  {id:"socketSkel",   g:"gA3", label:"SocketSkeleton",     sub:["真实 socket（待上板）"], gray:true},
+
+  /* 控制层 */
+  {id:"edgeControl",   g:"gB1", label:"EdgeControl",
+   sub:["实现 SignalSink · ICaptureSink", "IRecognitionSink · IFrameSink", "继承 BaseService"]},
+  {id:"moduleWiring",  g:"gB1", label:"ModuleWiring",
+   sub:["Callable 间接持有三个模块门面", "（不是 import）"]},
+  {id:"dispatchThread",g:"gB1", label:"EdgeDispatchThread", sub:["周期排空应答（新增）"], hl:true},
+  {id:"eventCache",    g:"gB2", label:"EventCache", sub:["按入队顺序缓存 · 补发开关"], bypass:true},
+
+  /* modules/tcp */
+  {id:"tcpLayer", g:"gC1", label:"TcpControlLayer",   sub:["BaseService · SignalSink"]},
+  {id:"tcpComm",  g:"gC1", label:"TcpComm",           sub:["组帧 · 切帧 · 收发"]},
+  {id:"tcpDec",   g:"gC1", label:"TcpDecodeThread",   sub:["半包粘包 · 坏帧丢弃"]},
+  {id:"tcpHeart", g:"gC1", label:"TcpHeartThread",    sub:["周期心跳发送"]},
+  {id:"tcpRecon", g:"gC1", label:"TcpReconnectThread",sub:["退避重连"]},
+  /* modules/usb */
+  {id:"usbCtrl",   g:"gC2", label:"UsbController", sub:["BaseService · 采集门面"]},
+  {id:"captureWk", g:"gC2", label:"CaptureWorker", sub:["双路取帧 · 落盘 · 滚动删旧"]},
+  {id:"cameraDev", g:"gC2", label:"CameraDevice",  sub:["实现 ICameraDevice · ICameraFocus"]},
+  {id:"cameraFac", g:"gC2", label:"CameraFactory", sub:["按地址形态选后端"]},
+  /* modules/recognition */
+  {id:"recogCtrl",   g:"gC3", label:"RecognitionController", sub:["BaseService · 识别门面"]},
+  {id:"recogWorker", g:"gC3", label:"RecognitionWorker",    sub:["对照表链路 · 逐行出条目"]},
+  {id:"yoloEngine",  g:"gC3", label:"YoloEngine",           sub:["实现 IRecognitionEngine"]},
+  {id:"frameStitch", g:"gC3", label:"FrameStitcher",        sub:["拼接 / 裁剪契约（新增）"], hl:true},
+  {id:"cv2Stitch",   g:"gC3", label:"Cv2FrameStitcher",     sub:["真实图像实现（新增）"], hl:true},
+  {id:"degStitch",   g:"gC3", label:"DegradedFrameStitcher",sub:["缺图像库时的降级桩"], bypass:true},
+  {id:"recogUtils",  g:"gC3", label:"recognition_utils",    sub:["纯函数：查表校验 · 组帧"]},
+
+  /* interfaces · 事件回调契约 */
+  {id:"iSignal",    g:"gD1", label:"SignalSink",     sub:["链路事件"]},
+  {id:"iCapture",   g:"gD1", label:"ICaptureSink",   sub:["采集事件"]},
+  {id:"iRecogSink", g:"gD1", label:"IRecognitionSink",sub:["识别事件"]},
+  {id:"iFrameSink", g:"gD1", label:"IFrameSink",     sub:["帧流回调（新增）"], hl:true},
+  /* base */
+  {id:"baseThread",  g:"gD2", label:"BaseThread",  sub:["IThread · 生命周期"]},
+  {id:"baseService", g:"gD2", label:"BaseService", sub:["init / start / stop"]},
+  /* interfaces · 设备 / 引擎 / 通用 */
+  {id:"iCamDev",   g:"gD3", label:"ICameraDevice",    sub:["摄像头设备"]},
+  {id:"iCamFocus", g:"gD3", label:"ICameraFocus",     sub:["对焦能力（新增）"], hl:true},
+  {id:"iRecogEng", g:"gD3", label:"IRecognitionEngine",sub:["推理引擎"]},
+  {id:"iSocket",   g:"gD3", label:"ISocket",          sub:["套接字"]},
+  {id:"iConfig",   g:"gD3", label:"IConfig",          sub:["配置读取"]},
+  {id:"iLogger",   g:"gD3", label:"ILogger",          sub:["日志四方法"]},
+  {id:"iThread",   g:"gD3", label:"IThread",          sub:["线程生命周期"]},
+  {id:"iPlatform", g:"gD3", label:"IPlatformAdapter", sub:["平台差异"]},
+  /* platform */
+  {id:"platFactory", g:"gD4", label:"PlatformFactory",   sub:["唯一 sys.platform 分支"]},
+  {id:"winAdapter",  g:"gD4", label:"WindowsAdapter",   sub:["Windows 路径 / 信号"]},
+  {id:"linuxAdapter",g:"gD4", label:"LinuxAdapter",     sub:["Linux 骨架（待上板）"], gray:true},
+  {id:"fileLock",    g:"gD4", label:"ProcessFileLock",  sub:["进程单文件锁"]},
+  /* infra */
+  {id:"iniConfig", g:"gD5", label:"IniConfigManager", sub:["IConfig · Fail-Fast"]},
+  {id:"logManager",g:"gD5", label:"LogManager",       sub:["ILogger · 异步队列"]},
+  {id:"logExec",   g:"gD5", label:"LogExecutor",      sub:["后台消费线程"]},
+  {id:"logWriter", g:"gD5", label:"LogFileWriter",    sub:["滚动 · 磁盘清理"]},
+  {id:"roiLoader", g:"gD5", label:"RoiBindingLoader", sub:["CSV 对照表装载（新增）"], hl:true},
+  {id:"roiRow",    g:"gD5", label:"RoiBindingRow",    sub:["区域 + 货位 + 工具 + 标志"]},
+  /* exceptions */
+  {id:"edgeError", g:"gD6", label:"EdgeError",  sub:["唯一业务异常"]},
+  {id:"errorCode", g:"gD6", label:"ErrorCode",  sub:["五个业务异常码"]}
+];
+
+/* 子舱内的列 / 行位置：按上面的 cols/rows 均分 */
+const SLOT = {};
+(function(){
+  GROUPS.forEach(g => {
+    for(let r=0;r<g.rows;r++) for(let c=0;c<g.cols;c++) SLOT[g.id+":"+c+":"+r] = {c:c, r:r};
+  });
+  const counters = {};
+  NODES.forEach(n => {
+    const g = GROUPS.find(x => x.id === n.g);
+    const k = n.g;
+    counters[k] = counters[k] || 0;
+    const idx = counters[k]++;
+    const c = idx % g.cols, r = Math.floor(idx / g.cols);
+    n.col = c; n.row = r;
+  });
+})();
+
+/* ---------------- 关键关系（跨层 ≤18 条，线上标注接口名） ---------------- */
+const ARROWS = [
+  /* 入口层 → 控制层 */
+  {f:"buildSystem", t:"edgeControl",    kind:"dep",  label:"装配控制层"},
+  {f:"buildSystem", t:"eventCache",     kind:"dep",  label:"装配事件缓存"},
+  {f:"buildSystem", t:"dispatchThread", kind:"dep",  label:"装配排空线程"},
+  /* 控制层 → 模块层：靠 ModuleWiring 的 Callable 间接持有 */
+  {f:"moduleWiring", t:"tcpLayer",   kind:"wire", label:"Callable 注入"},
+  {f:"moduleWiring", t:"usbCtrl",    kind:"wire", label:"Callable 注入"},
+  {f:"moduleWiring", t:"recogCtrl",  kind:"wire", label:"Callable 注入"},
+  /* 控制层 → 契约层（实现 / 继承） */
+  {f:"edgeControl",   t:"iSignal",    kind:"inh", label:"实现 SignalSink"},
+  {f:"edgeControl",   t:"iCapture",   kind:"inh", label:"实现 ICaptureSink"},
+  {f:"edgeControl",   t:"iFrameSink", kind:"inh", label:"实现 IFrameSink"},
+  {f:"edgeControl",   t:"iRecogSink", kind:"inh", label:"实现 IRecognitionSink"},
+  {f:"edgeControl",   t:"baseService",kind:"inh", label:"继承 BaseService"},
+  {f:"dispatchThread",t:"baseThread", kind:"inh", label:"继承 BaseThread"},
+  /* 模块层 → 契约层 */
+  {f:"usbCtrl",   t:"iCapture",   kind:"dep", label:"采集事件回调"},
+  {f:"usbCtrl",   t:"iFrameSink", kind:"dep", label:"帧流回调"},
+  {f:"cameraDev", t:"iCamDev",    kind:"inh", label:"实现 ICameraDevice"},
+  {f:"cameraDev", t:"iCamFocus",  kind:"inh", label:"实现 ICameraFocus"},
+  {f:"recogCtrl", t:"iRecogSink", kind:"dep", label:"识别事件回调"},
+  /* 入口层 → 模块层（唯一的装配点，走左侧竖向通道） */
+  {f:"buildSystem", t:"bandModules", kind:"dep", label:"装配并注入三个模块门面", special:"gutter"}
+];
+
+/* ---------------- 数据流一条线（核心链路副图） ---------------- */
+const DATAFLOW = [
+  {t:"① 对照表 CSV", s:"config/roi_binding_csv", d:"每行一个货位：区域四角点 + 货位 + 应放工具 + 标志类别"},
+  {t:"② RoiBindingLoader.load", s:"infra/roi_binding_loader.py:90", d:"读 CSV → RoiBindingRow[]；缺列/重复货位当场 Fail-Fast"},
+  {t:"③ 识别门面注入", s:"modules/recognition/recognition_controller.py", d:"app_init 把对照表行与拼接器注入 RecognitionController"},
+  {t:"④ 逐行出 items", s:"modules/recognition/recognition_utils.py:209", d:"buildRowItem 产出 position / tool_id / confidence / alert_type 四键"},
+  {t:"⑤ 控制层聚合", s:"control/edge_control.py:436", d:"4 组结果按 position 排序去重；失败线程按降级补齐"},
+  {t:"⑥ 回包上位机", s:"modules/recognition/recognition_utils.py:238", d:"buildAck → recognize_ack → EdgeDispatchThread 排空发出"}
+];
+
+/* =======================================================================
+   工具
+   ======================================================================= */
+const esc = s => String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+function textW(s, size){
+  let w = 0;
+  for(const ch of String(s)){
+    const c = ch.codePointAt(0);
+    if(c > 0x2e80) w += size;                 /* 中文 / 全角 */
+    else if(ch === " ") w += size * 0.32;
+    else w += size * 0.56;                    /* ASCII 近似 */
+  }
+  return w;
+}
+const bandOf  = id => BANDS.find(b => b.id === id);
+const grpOf   = id => GROUPS.find(g => g.id === id);
+const nodeOf  = id => NODES.find(n => n.id === id);
+const bandOfNode = id => grpOf(nodeOf(id).g).band;
+const bandVisible = id => !focusBand || focusBand === id;
+const foldSet = new Set();
+let   focusBand = null;
+
+/* =======================================================================
+   布局
+   ======================================================================= */
+const L = {};   /* 全局布局结果 */
+
+function visibleNodes(g){ return NODES.filter(n => n.g === g.id && !foldSet.has(g.id)); }
+
+function measureGroup(g){
+  const nodes = visibleNodes(g);
+  const colW = new Array(g.cols).fill(0);
+  const rowH = new Array(g.rows).fill(0);
+  nodes.forEach(n => {
+    const lines = Array.isArray(n.sub) ? n.sub : (n.sub ? [n.sub] : []);
+    let w = textW(n.label, CFG.titleFont);
+    lines.forEach(l => { w = Math.max(w, textW(l, CFG.subFont)); });
+    n.lines = lines;
+    n.tw = w;
+    n.w = Math.ceil(w) + CFG.nodePadX * 2;
+    n.h = CFG.nodePadY * 2 + CFG.titleLine + (lines.length ? CFG.subLine * lines.length : 0);
+    colW[n.col] = Math.max(colW[n.col], n.w);
+    rowH[n.row] = Math.max(rowH[n.row], n.h);
+  });
+  g.colW = colW; g.rowH = rowH;
+  g.folded = foldSet.has(g.id);
+  g.innerW = colW.reduce((a,b)=>a+b,0) + (g.cols-1) * CFG.colGap;
+  g.innerH = rowH.reduce((a,b)=>a+b,0) + (g.rows-1) * CFG.rowGap;
+  g.w = g.innerW + CFG.grpPadX * 2;
+  g.h = g.folded ? 56 : (CFG.grpHead + g.innerH + CFG.grpPadY * 2);
+  g.nodeCount = nodes.length;
+}
+
+function placeGroup(g, x, y){
+  g.x = x; g.y = y;
+  if(g.folded) return;
+  const colX = []; let acc = x + CFG.grpPadX;
+  for(let c=0;c<g.cols;c++){ colX.push(acc); acc += g.colW[c] + CFG.colGap; }
+  const rowY = []; acc = y + CFG.grpHead + CFG.grpPadY;
+  for(let r=0;r<g.rows;r++){ rowY.push(acc); acc += g.rowH[r] + CFG.rowGap; }
+  visibleNodes(g).forEach(n => {
+    n.x = colX[n.col] + (g.colW[n.col] - n.w) / 2;
+    n.y = rowY[n.row] + (g.rowH[n.row] - n.h) / 2;
+    n.cx = n.x + n.w / 2; n.cy = n.y + n.h / 2;
+  });
+}
+
+function computeLayout(){
+  GROUPS.forEach(measureGroup);
+
+  const bandVisibleLocal = id => !focusBand || focusBand === id;
+  const gs = id => GROUPS.filter(g => g.band === id && bandVisibleLocal(id));
+  /* 一行排布的子舱：返回内容宽度 */
+  const rowWidth = list => list.length ? list.reduce((a,g)=>a+g.w,0) + 40*(list.length-1) : 0;
+
+  /* —— ① 入口层：横跨整幅 —— */
+  const entryGroups = gs("entry");
+  const entryContentW = rowWidth(entryGroups);
+  const entryW = CFG.bandPadX*2 + entryContentW;
+  const entryH = CFG.bandHead + Math.max(...entryGroups.map(g=>g.h), 0) + CFG.bandPadY*2 + CFG.lanePad;
+
+  /* —— 左列：② 控制层 + ③ 模块层 —— */
+  const ctrlGroups = gs("control");
+  const ctrlContentW = rowWidth(ctrlGroups);
+  const ctrlH = CFG.bandHead + Math.max(...ctrlGroups.map(g=>g.h), 0) + CFG.bandPadY*2 + CFG.lanePad;
+
+  const modGroups = gs("modules");
+  const modContentW = rowWidth(modGroups);
+  const modH = CFG.bandHead + Math.max(...modGroups.map(g=>g.h), 0) + CFG.bandPadY*2 + CFG.lanePad;
+
+  const leftContentW = Math.max(ctrlContentW, modContentW);
+  const leftW = CFG.bandPadX*2 + leftContentW;
+
+  /* —— 右列：④ 基础层（2 列 × 3 行网格；col0 放所有箭头要进入的契约组） —— */
+  const grid = [["gD1","gD4"],["gD2","gD5"],["gD3","gD6"]];
+  const inFound = id => { const g = grpOf(id); return g && bandVisible("found"); };
+  const colW = [0,0];
+  grid.forEach(row => row.forEach((id, ci) => {
+    const g = grpOf(id); if(g && inFound(id)) colW[ci] = Math.max(colW[ci], g.w);
+  }));
+  const rowH = grid.map(row => {
+    const hs = row.map(id => { const g = grpOf(id); return (g && inFound(id)) ? g.h : null; }).filter(v => v !== null);
+    return hs.length ? Math.max(...hs) : 0;
+  });
+  const foundContentW = colW[0] + 48 + colW[1];
+  const foundW = CFG.bandPadX*2 + foundContentW;
+  const foundH = CFG.bandHead + rowH.reduce((a,b)=>a+b,0) + CFG.gapGrid*(grid.length-1) + CFG.bandPadY*2;
+
+  /* —— 落位 —— */
+  const entryY = CFG.margin;
+  const entryX = CFG.margin;
+  let ax = 0;
+  entryGroups.forEach(g => { placeGroup(g, entryX + CFG.bandPadX + ax, entryY + CFG.bandHead + CFG.bandPadY); ax += g.w + 40; });
+
+  const ctrlY = entryY + entryH + CFG.gapTop;
+  ax = 0;
+  ctrlGroups.forEach(g => { placeGroup(g, CFG.margin + CFG.bandPadX + ax, ctrlY + CFG.bandHead + CFG.bandPadY); ax += g.w + 40; });
+
+  const modY = ctrlY + ctrlH + CFG.gapMid;
+  ax = 0;
+  modGroups.forEach(g => { placeGroup(g, CFG.margin + CFG.bandPadX + ax, modY + CFG.bandHead + CFG.bandPadY); ax += g.w + 40; });
+
+  /* ④ 基础层与 ③ 模块层同高起排：②→③ 的走廊完全空出来，走线不压任何泳道 */
+  const foundX = CFG.margin + leftW + CFG.gapCol;
+  const foundY = modY;
+  let ry = foundY + CFG.bandHead + CFG.bandPadY;
+  grid.forEach((row, ri) => {
+    let cx = foundX + CFG.bandPadX;
+    row.forEach((id, ci) => {
+      const g = grpOf(id);
+      if(g && bandVisible("found")) placeGroup(g, cx, ry);
+      cx += colW[ci] + 48;
+    });
+    ry += rowH[ri] + CFG.gapGrid;
+  });
+
+  /* —— 数据流一条线（底部通栏） —— */
+  const canvasW0 = Math.max(entryX + entryW + CFG.margin, foundX + foundW + CFG.margin);
+  const flowX = CFG.margin + CFG.bandPadX;
+  const flowW = canvasW0 - CFG.margin*2 - CFG.bandPadX*2;
+  const contentBottom = Math.max(modY + modH, foundY + foundH);
+  const flowY = contentBottom + 96;
+
+  /* —— 图例（底部通栏） —— */
+  const legendY = flowY + CFG.flowH + 58;
+  const canvasH = legendY + CFG.legendH + CFG.margin;
+
+  L.canvas = {w: Math.ceil(canvasW0), h: Math.ceil(canvasH)};
+  L.bands = {
+    entry:   {x: entryX, y: entryY, w: entryW, h: entryH, title: bandOf("entry")},
+    control: {x: CFG.margin, y: ctrlY, w: leftW, h: ctrlH, title: bandOf("control")},
+    modules: {x: CFG.margin, y: modY,  w: leftW, h: modH,  title: bandOf("modules")},
+    found:   {x: foundX,   y: foundY, w: foundW, h: foundH, title: bandOf("found")}
+  };
+  L.flow = {x: flowX, y: flowY, w: flowW, h: CFG.flowH};
+  L.legendY = legendY;
+  L.gutterX = foundX - 20;                    /* 竖向通道：靠右列一侧 */
+  L.gutterL = CFG.margin + 14;                /* 最左侧竖向通道 */
+  L.laneCtrl = ctrlY + ctrlH - CFG.lanePad / 2;   /* ② 底部走线车道 */
+  L.laneMod  = modY + modH - CFG.lanePad / 2;    /* ③ 底部走线车道 */
+  L.corridorMid = ctrlY + ctrlH + CFG.gapMid / 2;
+  L.corridorTop = entryY + entryH + CFG.gapTop / 2;
+}
+
+/* =======================================================================
+   连线路由
+   ======================================================================= */
+const KIND = {
+  dep:  {color:"#38bdf8", dash:"",    w:2.2, marker:"url(#mDep)"},
+  inh:  {color:"#fbbf24", dash:"8 6", w:2.2, marker:"url(#mInh)"},
+  wire: {color:"#c084fc", dash:"2 7", w:2.4, marker:"url(#mWire)"}
+};
+const P = p => p[0].toFixed(1) + "," + p[1].toFixed(1);
+function poly(pts){ let d = "M" + P(pts[0]); for(let i=1;i<pts.length;i++) d += " L" + P(pts[i]); return d; }
+
+function routeArrows(){
+  const routes = [];
+  const gutter = ARROWS.filter(a => a.special === "gutter");
+  const vis = a => bandVisible(bandOfNode(a.f)) && bandVisible(bandOfNode(a.t));
+  const downTop = ARROWS.filter(a => a.special !== "gutter" && vis(a) && ["gA1","gA2","gA3"].indexOf(nodeOf(a.f).g) >= 0);
+  /* ②→③ 只有 ModuleWiring 的 Callable 注入是「往下走」；其余 gB1 出发的都是指向右列契约层 */
+  const downMid = ARROWS.filter(a => a.special !== "gutter" && vis(a) && downTop.indexOf(a) < 0 && a.kind === "wire");
+  const rightUp = ARROWS.filter(a => a.special !== "gutter" && vis(a) && downTop.indexOf(a) < 0 && downMid.indexOf(a) < 0);
+
+  /* ①→②：走 ① 与 ② 之间的走廊 */
+  let k = 0;
+  downTop.forEach(a => {
+    const s = nodeOf(a.f), t = nodeOf(a.t);
+    const lane = L.corridorTop - 30 - k * 40; k++;
+    a.pts = [[s.cx, s.y+s.h], [s.cx, lane], [t.cx, lane], [t.cx, t.y]];
+    a.labelPos = [t.cx, lane - 14];
+    routes.push(a);
+  });
+  /* ②→③：走 ② 与 ③ 之间的走廊（这条走廊完全空出来，不压任何泳道） */
+  k = 0;
+  downMid.forEach(a => {
+    const s = nodeOf(a.f), t = nodeOf(a.t);
+    const lane = L.corridorMid - 40 - k * 40; k++;
+    a.pts = [[s.cx, s.y+s.h], [s.cx, lane], [t.cx, lane], [t.cx, t.y]];
+    a.labelPos = [t.cx, lane - 14];
+    routes.push(a);
+  });
+  /* ②/③ → ④ 基础层：从本层底部车道右拐 → 竖向通道 → 从目标节点正上方落进框内
+     控制层与模块层的箭头分两排走线、错开落点，标签各占一行，互不压框 */
+  k = 0;
+  rightUp.forEach(a => {
+    const s = nodeOf(a.f), t = nodeOf(a.t);
+    const fromCtrl = (s.g === "gB1" || s.g === "gB2");
+    const lane = fromCtrl ? L.laneCtrl : L.laneMod;
+    const gx = L.gutterX - (rightUp.length - 1 - k) * 24;
+    const ty = fromCtrl ? (t.y - 42) : (t.y - 14);
+    const dx = fromCtrl ? (t.cx - 30) : (t.cx + 30);
+    a.pts = [[s.cx, s.y+s.h], [s.cx, lane], [gx, lane], [gx, ty], [dx, ty], [dx, t.y]];
+    a.labelPos = [dx, ty - 12];
+    routes.push(a); k++;
+  });
+  /* 唯一的装配点：走最左侧竖向通道，从 ③ 泳道左侧进入 */
+  gutter.forEach(a => {
+    const s = nodeOf(a.f);
+    const band = L.bands.modules;
+    const gx = L.gutterL;
+    const entryY = band.y + band.h * 0.5;
+    a.pts = [[s.x, s.cy], [gx, s.cy], [gx, entryY], [band.x + 14, entryY]];
+    a.labelPos = [gx + 150, L.corridorMid + 8];
+    routes.push(a);
+  });
+  return routes;
+}
+
+/* =======================================================================
+   渲染
+   ======================================================================= */
+function render(){
+  computeLayout();
+  const routes = routeArrows();
+  const W = L.canvas.w, H = L.canvas.h;
+  const p = [];
+
+  p.push('<svg id="root" xmlns="http://www.w3.org/2000/svg" width="' + W + '" height="' + H +
+         '" viewBox="0 0 ' + W + ' ' + H + '" font-family="Microsoft YaHei, Segoe UI, sans-serif">');
+  p.push('<defs>' +
+    '<marker id="mDep" viewBox="0 0 10 10" refX="9.2" refY="5" markerWidth="12" markerHeight="12" markerUnits="userSpaceOnUse" orient="auto">' +
+    '<path d="M0,0.8 L10,5 L0,9.2 Z" fill="context-stroke"/></marker>' +
+    '<marker id="mInh" viewBox="0 0 10 10" refX="9.4" refY="5" markerWidth="14" markerHeight="14" markerUnits="userSpaceOnUse" orient="auto">' +
+    '<path d="M0,0.8 L10,5 L0,9.2 Z" fill="none" stroke="context-stroke" stroke-width="1.6"/></marker>' +
+    '<marker id="mWire" viewBox="0 0 10 10" refX="9.2" refY="5" markerWidth="12" markerHeight="12" markerUnits="userSpaceOnUse" orient="auto">' +
+    '<path d="M1,1 L9,5 L1,9" fill="none" stroke="context-stroke" stroke-width="2"/></marker>' +
+    '<filter id="sh" x="-30%" y="-30%" width="160%" height="160%">' +
+    '<feDropShadow dx="0" dy="3" stdDeviation="3.2" flood-color="#000" flood-opacity="0.6"/></filter>' +
+    '</defs>');
+  p.push('<rect x="0" y="0" width="' + W + '" height="' + H + '" fill="#060b14"/>');
+
+  /* 泳道框 */
+  ["entry","control","modules","found"].forEach(id => {
+    const b = L.bands[id];
+    if(focusBand && focusBand !== id) return;
+    p.push('<rect x="' + b.x + '" y="' + b.y + '" width="' + b.w + '" height="' + b.h +
+           '" rx="18" fill="#0b1424" stroke="#1f2d45" stroke-width="1.6"/>');
+    p.push('<path d="M' + (b.x+18) + ',' + b.y + ' L' + (b.x+56) + ',' + b.y + ' L' + (b.x+36) + ',' + (b.y+30) +
+           ' L' + (b.x-2) + ',' + (b.y+18) + ' Z" fill="#15243c"/>');
+    p.push('<text x="' + (b.x+16) + '" y="' + (b.y+26) + '" font-size="20" font-weight="700" fill="#e8eef7">' +
+           esc(b.title.no + " " + b.title.title) + '</text>');
+    p.push('<text x="' + (b.x+16) + '" y="' + (b.y+50) + '" font-size="13.5" fill="#8296b0">' + esc(b.title.desc) + '</text>');
+    p.push('<text x="' + (b.x + b.w - 16) + '" y="' + (b.y+26) + '" font-size="13" text-anchor="end" fill="#5f7594">共 ' +
+           NODES.filter(n => grpOf(n.g).band === id).length + ' 个类</text>');
+  });
+
+  /* 子舱框 */
+  GROUPS.forEach(g => {
+    const tone = TONE[g.tone] || TONE.base;
+    p.push('<rect x="' + g.x + '" y="' + g.y + '" width="' + g.w + '" height="' + g.h +
+           '" rx="14" fill="rgba(17,27,45,0.72)" stroke="' + tone.bd + '" stroke-opacity="0.42" stroke-width="1.6"/>');
+  });
+
+  /* 连线 */
+  routes.forEach(a => {
+    const k = KIND[a.kind];
+    const dash = k.dash ? ' stroke-dasharray="' + k.dash + '"' : "";
+    p.push('<path d="' + poly(a.pts) + '" fill="none" stroke="' + k.color + '" stroke-width="' + k.w +
+           '"' + dash + ' opacity="0.95" marker-end="' + k.marker + '"/>');
+  });
+
+  /* 子舱标题（画在连线之上） */
+  GROUPS.forEach(g => {
+    const tone = TONE[g.tone] || TONE.base;
+    const mark = g.folded ? "▶ 已折叠 " + g.nodeCount + " 个类（点标题展开）" : "▼ " + g.title;
+    const w = textW(mark, 15) + 30;
+    p.push('<g class="ghead" data-group="' + g.id + '">');
+    p.push('<rect x="' + (g.x+10) + '" y="' + (g.y-13) + '" width="' + w.toFixed(1) + '" height="30" rx="8" ' +
+           'fill="#0e1a2c" stroke="' + tone.bd + '" stroke-opacity="0.65" stroke-width="1.2"/>');
+    p.push('<text x="' + (g.x+25) + '" y="' + (g.y+8) + '" font-size="15" font-weight="700" fill="' + tone.bd + '">' + esc(mark) + '</text>');
+    p.push('</g>');
+    if(!g.folded && g.cap){
+      p.push('<text x="' + (g.x+22+w).toFixed(1) + '" y="' + (g.y+8) + '" font-size="13" fill="#8ea3bd">' + esc(g.cap) + '</text>');
+    }
+  });
+
+  /* 连线标签 */
+  routes.forEach(a => {
+    if(!a.label || !a.labelPos) return;
+    const k = KIND[a.kind];
+    const fs = 13;
+    const w = textW(a.label, fs) + 16;
+    const x = a.labelPos[0] - w/2, y = a.labelPos[1] - 15;
+    p.push('<g><rect x="' + x.toFixed(1) + '" y="' + y.toFixed(1) + '" width="' + w.toFixed(1) + '" height="20" rx="5" ' +
+           'fill="#060b14" fill-opacity="0.95" stroke="' + k.color + '" stroke-opacity="0.7" stroke-width="1"/>');
+    p.push('<text x="' + a.labelPos[0].toFixed(1) + '" y="' + (a.labelPos[1]-1).toFixed(1) + '" font-size="' + fs +
+           '" text-anchor="middle" fill="' + k.color + '">' + esc(a.label) + '</text></g>');
+  });
+
+  /* 节点 */
+  NODES.forEach(n => {
+    if(foldSet.has(n.g)) return;
+    const g = grpOf(n.g);
+    if(focusBand && g.band !== focusBand) return;
+    const tone = n.gray ? GRAY : (n.bypass ? TONE.bypass : (TONE[g.tone] || TONE.base));
+    const gid = "g_" + n.id;
+    const bd = n.gray ? "#c3cedb" : (n.hl ? "#34d399" : tone.bd);
+    const sw = n.hl ? 3 : (n.gray ? 2 : 1.6);
+    const dash = n.gray ? ' stroke-dasharray="7 5"' : "";
+    p.push('<defs><linearGradient id="' + gid + '" x1="0" y1="0" x2="0" y2="1">' +
+           '<stop offset="0" stop-color="' + tone.c1 + '"/><stop offset="1" stop-color="' + tone.c2 + '"/></linearGradient></defs>');
+    p.push('<g filter="url(#sh)"><rect x="' + n.x.toFixed(1) + '" y="' + n.y.toFixed(1) + '" width="' + n.w.toFixed(1) +
+           '" height="' + n.h.toFixed(1) + '" rx="12" fill="url(#' + gid + ')" stroke="' + bd + '" stroke-width="' + sw + '"' + dash + '/></g>');
+    const nameY = n.y + CFG.nodePadY + CFG.titleFont;
+    p.push('<text x="' + n.cx.toFixed(1) + '" y="' + nameY.toFixed(1) + '" font-size="' + CFG.titleFont +
+           '" font-weight="700" text-anchor="middle" fill="#f4f8ff">' + esc(n.label) + '</text>');
+    (n.lines || []).forEach((ln, i) => {
+      p.push('<text x="' + n.cx.toFixed(1) + '" y="' + (nameY + 21 + i*CFG.subLine).toFixed(1) + '" font-size="' + CFG.subFont +
+             '" text-anchor="middle" fill="' + (n.gray ? "#f2f6fb" : "#c3d2e6") + '">' + esc(ln) + '</text>');
+    });
+    if(n.hl) p.push('<circle cx="' + (n.x+n.w-13).toFixed(1) + '" cy="' + (n.y+13).toFixed(1) + '" r="6" fill="#34d399" stroke="#06251c" stroke-width="1.6"/>');
+    if(n.gray) p.push('<circle cx="' + (n.x+n.w-13).toFixed(1) + '" cy="' + (n.y+13).toFixed(1) + '" r="5" fill="#0b1220" stroke="#c3cedb" stroke-width="1.5"/>');
+  });
+
+  /* 数据流一条线 */
+  renderQuick(p);
+  renderDataFlow(p);
+
+  /* 图例 */
+  renderLegend(p);
+
+  p.push('</svg>');
+  document.getElementById("host").innerHTML = p.join("");
+  document.getElementById("size-tip").textContent = W + " × " + H;
+  document.getElementById("node-tip").textContent = NODES.length + " 个节点";
+  document.getElementById("edge-tip").textContent = ARROWS.length + " 条关键关系";
+}
+
+/* ---------------- 速查面板（填右上留白） ---------------- */
+const QUICK = [
+  {title:"读图速查 · 三步看懂这张图", tone:"#9fdcff", items:[
+    ["第 1 步", "先看底部「数据流一条线」把主线走一遍：CSV → 装载 → 识别 → items → 聚合 → 回包"],
+    ["第 2 步", "再看 ② 控制层：EdgeControl 实现四个 Sink，是唯一同时看得见三个模块的人"],
+    ["第 3 步", "最后按需要展开子舱：点子舱标题折叠 / 展开，或用工具条「聚焦某一层」单屏看"]
+  ]},
+  {title:"本轮新增（翠绿描边）", tone:"#7ee2b8", items:[
+    ["RoiBindingLoader", "读 CSV 对照表成 RoiBindingRow[]，配置问题当场 Fail-Fast（infra/roi_binding_loader.py:90）"],
+    ["FrameStitcher / Cv2FrameStitcher", "拼接与裁剪契约 + 真实图像实现；缺图像库时降级成 DegradedFrameStitcher"],
+    ["EdgeDispatchThread", "周期调用 EdgeControl.dispatchOutbox，把待发应答真正送出（control/edge_dispatch_thread.py:18）"],
+    ["ICameraFocus / IFrameSink", "对焦能力契约 + 帧流回调契约，都是本轮补上的零实现接口"]
+  ]},
+  {title:"关键事实（与代码一致）", tone:"#ffd88a", items:[
+    ["装配点唯一", "app_init 是唯一同时 import 三个模块门面的地方；control 不 import 三个模块的具体类"],
+    ["模块彼此独立", "modules/tcp · usb · recognition 三块互不引用；infra 不引用任何 modules"],
+    ["契约零实现", "interfaces 里全是零实现、零业务依赖的抽象；base 只提供 init / start / stop 生命周期骨架"]
+  ]}
+];
+
+function renderQuick(p){
+  const x = L.bands.found.x, y = CFG.margin;
+  const w = L.canvas.w - x - CFG.margin;
+  const h = L.bands.found.y - y - 56;
+  if(h < 300) return;
+  const gap = 26;
+  const cardH = Math.floor((h - gap * (QUICK.length - 1)) / QUICK.length);
+  QUICK.forEach((c, ci) => {
+    const cy = y + ci * (cardH + gap);
+    p.push('<rect x="' + x + '" y="' + cy + '" width="' + w + '" height="' + cardH + '" rx="16" fill="#0b1424" stroke="#1f2d45" stroke-width="1.5"/>');
+    p.push('<rect x="' + x + '" y="' + cy + '" width="5" height="' + cardH + '" rx="2.5" fill="' + c.tone + '" opacity="0.75"/>');
+    p.push('<text x="' + (x+26) + '" y="' + (cy+38) + '" font-size="20" font-weight="700" fill="#e8eef7">' + esc(c.title) + '</text>');
+    let ly = cy + 72;
+    c.items.forEach(it => {
+      p.push('<text x="' + (x+26) + '" y="' + ly + '" font-size="14.5" font-weight="700" fill="' + c.tone + '">' + esc(it[0]) + '</text>');
+      /* 说明按卡片宽度折行 */
+      const maxW = w - 60 - textW(it[0], 14.5) - 16;
+      let line = "", lines = [];
+      for(const ch of it[1]){
+        if(textW(line + ch, 14) > maxW){ lines.push(line); line = ch; }
+        else line += ch;
+      }
+      lines.push(line);
+      lines.forEach((ln, k2) => {
+        p.push('<text x="' + (x+26 + textW(it[0],14.5) + 16) + '" y="' + (ly + k2*21) + '" font-size="14" fill="#b9c8dc">' + esc(ln) + '</text>');
+      });
+      ly += Math.max(1, lines.length) * 21 + 12;
+    });
+  });
+}
+
+function renderDataFlow(p){
+  const f = L.flow;
+  const tone = TONE.recog;
+  p.push('<rect x="' + (f.x-22) + '" y="' + f.y + '" width="' + (f.w+44) + '" height="' + f.h +
+         '" rx="16" fill="#0a1424" stroke="#3c2a4c" stroke-width="1.6"/>');
+  p.push('<text x="' + f.x + '" y="' + (f.y+34) + '" font-size="19" font-weight="700" fill="#f3d9e4">数据流一条线 · 本工程的核心链路（读者最容易迷失的那条线）</text>');
+  p.push('<text x="' + (f.x + f.w) + '" y="' + (f.y+34) + '" font-size="13.5" text-anchor="end" fill="#93a7bf">照着 ① → ⑥ 读一遍，就知道「一条识别指令」怎么变成「一帧全柜实况」</text>');
+  const n = DATAFLOW.length;
+  const gap = 26;
+  const boxW = (f.w - gap * (n-1)) / n;
+  const boxY = f.y + 52, boxH = f.h - 66;
+  DATAFLOW.forEach((d, i) => {
+    const x = f.x + i * (boxW + gap);
+    p.push('<rect x="' + x.toFixed(1) + '" y="' + boxY + '" width="' + boxW.toFixed(1) + '" height="' + boxH +
+           '" rx="12" fill="#101c2e" stroke="' + tone.bd + '" stroke-opacity="0.5" stroke-width="1.4"/>');
+    p.push('<text x="' + (x+18) + '" y="' + (boxY+32) + '" font-size="17" font-weight="700" fill="#ffd0dc">' + esc(d.t) + '</text>');
+    p.push('<text x="' + (x+18) + '" y="' + (boxY+58) + '" font-size="12.5" fill="#7f9ab8">' + esc(d.s) + '</text>');
+    /* 说明按宽度折行，最多 3 行 */
+    const words = d.d.split("");
+    let line = "", ly = boxY + 84;
+    const maxW = boxW - 36;
+    const lines = [];
+    for(const ch of words){
+      if(textW(line + ch, 13.5) > maxW){ lines.push(line); line = ch; if(lines.length >= 3) break; }
+      else line += ch;
+    }
+    if(lines.length < 3) lines.push(line);
+    lines.forEach((ln, k2) => {
+      p.push('<text x="' + (x+18) + '" y="' + (ly + k2*20) + '" font-size="13.5" fill="#c2d2e4">' + esc(ln) + '</text>');
+    });
+    if(i < n-1){
+      const ax = x + boxW + 3;
+      p.push('<path d="M' + ax + ',' + (boxY + boxH/2) + ' L' + (ax+20) + ',' + (boxY + boxH/2) +
+             '" stroke="#38bdf8" stroke-width="2.6" marker-end="url(#mDep)"/>');
+    }
+  });
+}
+
+function renderLegend(p){
+  const y = L.legendY, x = CFG.margin, w = L.canvas.w - CFG.margin*2, h = CFG.legendH;
+  p.push('<rect x="' + x + '" y="' + y + '" width="' + w + '" height="' + h + '" rx="16" fill="#0a1424" stroke="#1f2d45" stroke-width="1.6"/>');
+  p.push('<text x="' + (x+24) + '" y="' + (y+40) + '" font-size="21" font-weight="700" fill="#e8eef7">图例 · 颜色与线型的含义</text>');
+  p.push('<text x="' + (x+w-24) + '" y="' + (y+40) + '" font-size="13.5" text-anchor="end" fill="#7f93ad">点子舱标题即可折叠 / 展开；工具条可「聚焦某一层」单屏阅读</text>');
+
+  const colW = (w - 96) / 2;
+  const lineItems = [
+    ["实线 ＝ 依赖 / 调用方向（线上标注接口名）", "#38bdf8", "", "mDep"],
+    ["虚线空三角 ＝ 继承或实现", "#fbbf24", "8 6", "mInh"],
+    ["点线 ＝ 间接持有（Callable 注入，不是 import）", "#c084fc", "2 7", "mDep"]
+  ];
+  const boxItems = [
+    ["深色渐变 ＝ 正常主链路", "linear-gradient(#1d3a5c,#12263d)", "#5aa9e6", "2", ""],
+    ["灰色渐变 + 白字 + 虚线框 ＝ 待上板 / 未启用（严禁白底）", "linear-gradient(#98a6b8,#6d7d92)", "#c3cedb", "2", "7 5"],
+    ["黄褐色 ＝ 旁路（缓存 / 降级 / 复用）", "linear-gradient(#4a3a1c,#2e2411)", "#e0c46c", "2", ""],
+    ["翠绿描边 ＝ 本轮新增类", "linear-gradient(#17413f,#0f2a2a)", "#34d399", "2.8", ""]
+  ];
+  /* 左列：线型 */
+  let ly = y + 84;
+  lineItems.forEach(it => {
+    p.push('<line x1="' + (x+30) + '" y1="' + (ly-5) + '" x2="' + (x+80) + '" y2="' + (ly-5) + '" stroke="' + it[1] + '" stroke-width="2.8"' +
+           (it[2] ? ' stroke-dasharray="' + it[2] + '"' : "") + ' marker-end="url(#' + it[3] + ')"/>');
+    p.push('<text x="' + (x+96) + '" y="' + ly + '" font-size="14.5" fill="#cbd8e8">' + esc(it[0]) + '</text>');
+    ly += 38;
+  });
+  /* 右列：颜色 */
+  let rx = x + 48 + colW, ry = y + 84;
+  boxItems.forEach(it => {
+    p.push('<rect x="' + rx + '" y="' + (ry-17) + '" width="26" height="21" rx="4" fill="' + it[1] + '" stroke="' + it[2] + '" stroke-width="' + it[3] + '"' +
+           (it[4] ? ' stroke-dasharray="' + it[4] + '"' : "") + '/>');
+    p.push('<text x="' + (rx+38) + '" y="' + ry + '" font-size="14.5" fill="#cbd8e8">' + esc(it[0]) + '</text>');
+    ry += 38;
+  });
+  p.push('<line x1="' + (x+24) + '" y1="' + (y+168) + '" x2="' + (x+w-24) + '" y2="' + (y+168) + '" stroke="#1f2d45" stroke-width="1.2"/>');
+  p.push('<text x="' + (x+24) + '" y="' + (y+198) + '" font-size="14" fill="#8ea3bd">层内协作关系不逐条画箭头，用子舱归属表达；翠绿描边＝本轮新增：RoiBindingLoader、FrameStitcher / Cv2FrameStitcher、EdgeDispatchThread、ICameraFocus / IFrameSink。</text>');
+  p.push('<text x="' + (x+24) + '" y="' + (y+222) + '" font-size="14" fill="#8ea3bd">灰色虚线框＝待上板 / 未启用（真实 socket、Linux 相机后端、Linux 文件锁）；黄褐色＝旁路（EventCache 断链缓存、DegradedFrameStitcher 降级桩）。</text>');
+}
+
+/* =======================================================================
+   自检
+   ======================================================================= */
+function selfCheck(){
+  const issues = [];
+  const shown = NODES.filter(n => !foldSet.has(n.g) && bandVisible(grpOf(n.g).band));
+  for(let i=0;i<shown.length;i++){
+    for(let j=i+1;j<shown.length;j++){
+      const a = shown[i], b = shown[j];
+      const ox = Math.min(a.x+a.w, b.x+b.w) - Math.max(a.x, b.x);
+      const oy = Math.min(a.y+a.h, b.y+b.h) - Math.max(a.y, b.y);
+      if(ox > 1 && oy > 1) issues.push("节点重叠：" + a.label + " ↔ " + b.label);
+    }
+  }
+  shown.forEach(n => {
+    const avail = n.w - CFG.nodePadX*2;
+    if(textW(n.label, CFG.titleFont) > avail + 0.5) issues.push("类名放不下：" + n.label);
+    (n.lines||[]).forEach(ln => {
+      if(textW(ln, CFG.subFont) > avail + 0.5) issues.push("注释放不下：" + n.id + "「" + ln + "」");
+    });
+    const g = grpOf(n.g);
+    if(n.x < g.x - 1 || n.x + n.w > g.x + g.w + 1) issues.push("出框：" + n.id + " 超出子舱 " + g.id);
+    if(n.y < g.y + CFG.grpHead - 1) issues.push("压标题：" + n.id + " 顶到子舱标题");
+    if(n.y + n.h > g.y + g.h + 1) issues.push("出框(下)：" + n.id);
+  });
+  GROUPS.forEach(g => {
+    if(foldSet.has(g.id)) return;
+    if(!bandVisible(g.band)) return;
+    const b = L.bands[g.band];
+    if(g.x < b.x - 1 || g.x + g.w > b.x + b.w + 1) issues.push("子舱 " + g.id + " 超出泳道 " + g.band);
+    if(g.y < b.y - 1 || g.y + g.h > b.y + b.h + 1) issues.push("子舱 " + g.id + " 超出泳道高度 " + g.band);
+  });
+  return issues;
+}
+
+/* =======================================================================
+   页面说明与交互
+   ======================================================================= */
+function fillPanels(issues){
+  const el = document.getElementById("check-body");
+  if(issues.length === 0){
+    el.innerHTML = '<div class="ok">✓ 通过</div><div class="muted">共 ' + NODES.length + ' 个节点、' +
+      ARROWS.length + ' 条跨层关键关系；同层两两无重叠，类名与说明文字均在框内（字号 标题 ' + CFG.titleFont +
+      'px / 说明 ' + CFG.subFont + 'px，均未截断）。</div>';
+  } else {
+    el.innerHTML = '<div class="bad">发现 ' + issues.length + ' 处问题</div><ul style="margin:6px 0 0 16px;padding:0">' +
+      issues.map(s => '<li>' + esc(s) + '</li>').join("") + '</ul>';
+  }
+  document.getElementById("dep-body").innerHTML =
+    '<div>· <code>modules/usb</code> → base + interfaces；<b>不</b> import modules/recognition</div>' +
+    '<div>· <code>modules/tcp</code> → base + interfaces；<b>不</b> import modules/usb / modules/recognition</div>' +
+    '<div>· <code>modules/recognition</code> → base + interfaces + infra（只认 infra 的对照表类型）；<b>不</b> import modules/usb / modules/tcp</div>' +
+    '<div>· <code>infra</code> → base + interfaces；<b>不</b> import 任何 modules</div>' +
+    '<div>· <code>control</code> → base + interfaces + control 内部；<b>不</b> import 三个模块的具体类</div>' +
+    '<div>· <code>app_init</code> 是唯一同时 import 三个模块门面的地方（装配点，图中左侧通道那条虚线箭头）</div>' +
+    '<div class="muted">control 对三个模块的引用全部经 <code>ModuleWiring</code> 的 Callable 间接持有（图中点线）。</div>';
+  document.getElementById("note-body").innerHTML =
+    '<div>· 继承箭头指向基类：<code>BaseThread</code> / <code>BaseService</code> → 各自子类；各接口 → 实现类</div>' +
+    '<div>· <b>EdgeControl</b> 同时实现 SignalSink / ICaptureSink / IRecognitionSink / IFrameSink，只做轻量分发与入队</div>' +
+    '<div>· <b>ModuleWiring</b> 里的 Callable 是 control 触达三个模块的唯一通道（stopActions 同理）</div>' +
+    '<div>· 识别模块只认 <code>IRecognitionEngine</code> / <code>FrameStitcher</code>，不认识 USB 采集实现</div>' +
+    '<div>· 采集模块只认 <code>ICameraDevice</code> / <code>ICameraFocus</code> / <code>ICaptureSink</code> / <code>IFrameSink</code>，不认识识别实现</div>' +
+    '<div>· 灰色虚线框 = 待上板 / 骨架：真实 socket、Linux 相机后端</div>';
+}
+
+function refresh(){
+  render();
+  fillPanels(selfCheck());
+}
+
+document.getElementById("host").addEventListener("click", ev => {
+  const head = ev.target.closest ? ev.target.closest(".ghead") : null;
+  if(!head) return;
+  const id = head.getAttribute("data-group");
+  if(foldSet.has(id)) foldSet.delete(id); else foldSet.add(id);
+  refresh();
+});
+document.getElementById("btn-all").addEventListener("click", () => { foldSet.clear(); focusBand = null; syncButtons(); refresh(); });
+document.getElementById("btn-fold").addEventListener("click", () => {
+  if(foldSet.size === GROUPS.length){ foldSet.clear(); }
+  else { GROUPS.forEach(g => foldSet.add(g.id)); }
+  focusBand = null; syncButtons(); refresh();
+});
+Array.prototype.forEach.call(document.querySelectorAll("[data-focus]"), btn => {
+  btn.addEventListener("click", () => {
+    const id = btn.getAttribute("data-focus");
+    focusBand = (focusBand === id) ? null : id;
+    syncButtons(); refresh();
+  });
+});
+function syncButtons(){
+  Array.prototype.forEach.call(document.querySelectorAll("[data-focus]"), btn => {
+    btn.classList.toggle("on", btn.getAttribute("data-focus") === focusBand);
+  });
+}
+
+refresh();
+window.__diagReady = true;
+</script>
+</body>
+</html>

@@ -55,12 +55,15 @@
 
 ## 1. 序列与依赖
 
-**共 9 个阶段**：`0 → a → b → c1 → c2 → c3 → c4 → c5 → d`。
+**共 12 个阶段**：`0 → a → b → c1 → c2 → c3 → c4 → c5 → d → c4plus → c5plus → dplus`。
+
+> 2026-11-14 更新：用户明确解除配置期禁令，批准新增 `c4plus` / `c5plus` / `dplus` 三个实施阶段（`stages/dplus/spec-digest.md` 抬头）。
+> 三阶段共用同一份签名契约与事实基线 `edge/docs/refactor/stages/dplus/spec-digest.md`，**§8 修订节优先级最高**（与 §2/§3 冲突时以 §8 为准）。
 
 - 严格串行推进，不跳阶、不合并；`c1` 与 `c2` 同属 infra 但按序验收。
 - 一次只做已确认范围内的文件；范围外留 TODO 并标明归属阶段。
 - 检视项按阶段逐步收敛，不得用问题清单阻断当前阶段开工。
-- 验收项编号 `<阶段>-<序号>` 供 `test-report.md` ① 对照表与测试函数注释引用。
+- 验收项编号 `<阶段>-<序号>` 供 `test-report.md` ① 对照表与测试函数注释引用；`c4plus` / `c5plus` / `dplus` 三阶段合并验收，编号直接用 `stages/dplus/spec-digest.md` §7 的 `§7-1`~`§7-6`。
 
 ## 2. 阶段明细
 
@@ -141,6 +144,33 @@
   `d-3` 一键停机严格串行 `USB → 识别 → TCP → 日志` + 进程锁；`d-4` Windows 端到端。
 - **适用裁决**：**D-01 / D-02 / D-03 全部复核**。
 - **禁止**：`app_init.py` 写业务逻辑；`main()` 用 `try/except` 包业务流程；实现按 `seq` 去重。
+
+### 阶段 c4plus — USB 采集循环化 + 对焦能力 + 帧回调契约
+
+- **依赖**：`0 → a → b → c1 → c2 → c3 → c4` 全部已完成；本阶段不依赖 `c5plus` / `dplus`。
+- **白名单**：`edge/modules/usb/**`、`edge/interfaces/i_camera_focus.py`、`edge/interfaces/i_frame_sink.py`、`edge/tests/fakes/fake_camera_focus.py`、`edge/tests/fakes/fake_frame_sink.py`。
+- **交付**：循环化流式采集（一轮双路取帧 → 帧流回调 → 落盘滚动删旧）、独立对焦契约 `ICameraFocus`、帧回调契约 `IFrameSink`、开机定焦与 8 路相机状态查询。
+- **验收项**：`stages/dplus/spec-digest.md` §7-1（工具链全绿）、§7-2（既有测试零修改断言）。
+- **适用裁决**：D-01（自检留空接口）、D-02（非 UP 不启其他线程）；**第三轮追加 D-15**（从未成功打开的相机一律 `offline`，不许报 `ok` —— 会让上位机开柜闸门误放行）。
+- **禁止**：扩展 `ICameraDevice`（会打破契约守卫的签名对齐断言）；主流程出现 `sys.platform`；平台差异外泄到主流程；把「从未打开」报成 `ok`。
+
+### 阶段 c5plus — ROI 对照表装载 + 裁剪拼接 + 流式识别
+
+- **依赖**：`c4plus` 已完成（流式帧来源由 c4plus 提供）。
+- **白名单**：`edge/modules/recognition/**`、`edge/infra/roi_binding_loader.py`、`edge/config/roi_binding.csv`。
+- **交付**：CSV 对照表装载（12 列表头，含 `worker_id`，四角点坐标）、五五分裁切 + 仅 x 轴偏移拼接、按四角点裁 ROI、区域内标志匹配、协议四键条目组帧、按 `request_id` 幂等。
+- **验收项**：`stages/dplus/spec-digest.md` §7-1、§7-3（端到端联调，条目恰好 4 字段）。
+- **适用裁决**：D-01、D-02、`trigger()` 内 NPU 并发限流仅留 TODO；**第三轮追加 D-12**（生产必须装载 ROI 对照表，缺失即启动失败，废弃配置兜底链路）、**D-13**（推理后端默认固定 ultralytics，onnxruntime 需现场标定）、**D-14**（对照表 `worker_id` 不得超实际采集线程数）、**D-16**（识别背压需有丢弃计数与抽样日志）。
+- **禁止**：新增 `ErrorCode` 成员；改 `edge/pyproject.toml`；`modules/recognition/` import `modules/usb/` / `modules/tcp/` / `control/`；线上帧出现 camelCase 协议键名；缺 `roiId` 时静默塌缩分组；未标定就切 onnxruntime 后端。
+
+### 阶段 dplus — 4 个生产断点修复 + 应答排空 + 正式配置 + 端到端联调
+
+- **依赖**：`c4plus` → `c5plus` 均已完成。
+- **白名单**：`edge/control/**`、`edge/app_init.py`、`edge/main.py`、`edge/config/config.ini`、`edge/tests/integration/**`、`edge/tests/contract/**`、`edge/tests/unit/test_stage_a_contract_alignment.py`。
+- **交付**：`recognize_req` 路由到采集、应答排空线程、断链自愈、周期帧改 `periodic` + 8 路 `camera_status`、正式 `config.ini`、桩上位机与真实上位机进程联调、上位机口径复刻校验器。
+- **验收项**：`stages/dplus/spec-digest.md` §7-1、§7-3、§7-4（幂等）、§7-5（周期帧 3 秒一帧 + 8 路状态）、§7-6（重复请求不重复扫描）；协议形状细则见同文件 **§8.3**。
+- **适用裁决**：**D-01 / D-02 / D-03 全部复核**，另适用 D-04 ~ D-11（见 `decisions.md`）；**第三轮追加 D-12 ~ D-16**。
+- **禁止**：把阶段状态自行推进到 `done`；代用户签署 review 结论；越界改 `edge/modules/tcp/` 既有文件（`onLinkDown` 转发上游一事以最小 diff 提交批准）；静默修改既有测试断言（`test_stage_a_contract_alignment.py` 的同步除外，且已登记待追认）。
 
 ## 3. 每阶段通用门禁
 

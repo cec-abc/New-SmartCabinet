@@ -1,4 +1,4 @@
-"""INI 配置管理：Fail-Fast 加载、类型推断与双检锁单例。"""
+"""INI 配置管理：加载失败即阻断启动、按内容推断类型、类内双检锁单例。"""
 from __future__ import annotations
 
 import configparser
@@ -12,6 +12,10 @@ from edge.exceptions import EdgeError, ErrorCode
 from edge.interfaces.i_config import IConfig
 from edge.interfaces.i_logger import ILogger
 
+## @file edge/infra/config_manager.py
+## @brief INI 配置读取：加载失败即阻断启动、按内容推断类型、类内双检锁单例
+## @author 袁燕
+
 ## @brief 布尔真值字面量；数字 1 / 0 交给整数分支，不当布尔
 TRUE_LITERALS: frozenset[str] = frozenset({"true", "yes", "on"})
 ## @brief 布尔假值字面量
@@ -24,9 +28,9 @@ INT_PATTERN: re.Pattern[str] = re.compile(r"[+-]?\d+")
 MODULE_NAME: str = "IniConfigManager"
 
 
-## @brief 把 INI 原始字符串推断为 bool / int / float / list / str
+## @brief 去掉首尾空白后，把 INI 值推断为 bool / int / float / list / str
 #  @param raw 原始值
-#  @return 推断后的值；无匹配类型时返回原文
+#  @return 推断后的值；无匹配类型时返回去掉首尾空白的文本
 def inferValue(raw: str) -> Any:
     text = raw.strip()
     lowered = text.lower()
@@ -59,6 +63,7 @@ class IniConfigManager(IConfig):
     ## @brief 构造配置管理器；路径与日志器由上层注入
     #  @param configPath INI 文件路径
     #  @param logger 可选日志器，用于 default 分支的 info 记录
+    #  @return 无
     #  @raises EdgeError 文件缺失或 INI 解析失败（CONFIG）
     def __init__(self, configPath: str, logger: ILogger | None = None) -> None:
         super().__init__()

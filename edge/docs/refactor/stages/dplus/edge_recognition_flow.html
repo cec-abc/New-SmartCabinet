@@ -1,0 +1,598 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>智能工具柜边缘计算机工程 · 识别主流程 与 周期帧 / 开柜闸门流程</title>
+<style>
+  :root{
+    --bg:#080e1a; --panel:#111c2f; --line:#1e293b; --txt:#e8eef7; --muted:#9fb0c7;
+    --flow:#38bdf8; --branch:#e0c46c; --wait:#9aa7b8; --hl:#34d399; --accent:#7dd3fc;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0;background:
+      radial-gradient(1100px 560px at 10% -8%, #16243c 0%, transparent 60%),
+      radial-gradient(900px 480px at 90% -6%, #1a1630 0%, transparent 55%),
+      var(--bg);
+    color:var(--txt);
+    font-family:"Microsoft YaHei","PingFang SC","Source Han Sans SC","Segoe UI",sans-serif;
+    -webkit-font-smoothing:antialiased}
+  .wrap{padding:26px 26px 46px;max-width:1920px;margin:0 auto}
+
+  .kicker{font-size:12.5px;letter-spacing:.42em;color:#6f88a8;text-transform:uppercase;margin-bottom:8px}
+  h1{font-size:30px;margin:0 0 10px;letter-spacing:.6px;font-weight:700;
+     background:linear-gradient(92deg,#e8eef7 0%,#8fd3ff 55%,#ffd9a0 100%);
+     -webkit-background-clip:text;background-clip:text;color:transparent}
+  h2{font-size:21px;margin:26px 0 8px;color:#dce8f7;letter-spacing:.5px;font-weight:700;display:flex;align-items:center;gap:12px}
+  h2::before{content:"";width:4px;height:22px;border-radius:2px;background:linear-gradient(#38bdf8,#e0c46c)}
+  .lead{margin:0 0 14px;max-width:1200px;font-size:14.5px;line-height:2.0;color:#b9c8dc}
+  .lead b{color:#8fe3ff;font-weight:600}
+  .lead .k{color:#ffd88a;font-weight:600}
+  .guide{counter-reset:g;list-style:none;margin:0 0 16px;padding:16px 20px;max-width:1200px;
+    background:linear-gradient(180deg,rgba(20,32,52,.92),rgba(13,21,36,.92));
+    border:1px solid #24344f;border-left:4px solid var(--accent);border-radius:12px;
+    box-shadow:0 12px 34px rgba(0,0,0,.42)}
+  .guide li{counter-increment:g;position:relative;padding:0 0 0 40px;margin:0 0 9px;font-size:14px;line-height:1.95;color:#cbd8e8}
+  .guide li:last-child{margin-bottom:0}
+  .guide li::before{content:counter(g);position:absolute;left:0;top:3px;width:26px;height:26px;border-radius:50%;
+    background:linear-gradient(160deg,#1e3a5c,#16233a);border:1px solid #3f6ea6;color:#9fdcff;
+    font-size:13px;font-weight:700;line-height:24px;text-align:center}
+  .guide b{color:#8fe3ff;font-weight:600}
+  .guide .g{color:#ffd88a;font-weight:600}
+
+  .scroller{overflow:auto;border:1px solid var(--line);border-radius:12px;background:#060b14;
+    box-shadow:0 14px 40px rgba(0,0,0,.5)}
+  svg{display:block}
+
+  .legend{display:flex;flex-wrap:wrap;gap:10px 24px;align-items:center;margin:12px 0 0;font-size:13px;
+    background:linear-gradient(180deg,rgba(17,28,47,.92),rgba(11,18,32,.92));
+    border:1px solid var(--line);border-radius:12px;padding:12px 16px}
+  .lg{display:inline-flex;align-items:center;gap:8px;color:#c6d4e6}
+  .sw{width:34px;height:0;border-top-width:2.6px;display:inline-block;flex:0 0 auto}
+  .boxsw{width:20px;height:16px;border-radius:4px;display:inline-block;flex:0 0 auto}
+
+  .panel{margin-top:16px;display:flex;flex-wrap:wrap;gap:16px}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px 16px;
+    font-size:13px;line-height:2.0;min-width:320px;flex:1}
+  .card h3{font-size:14px;margin:0 0 10px;color:#dce8f7;font-weight:700;letter-spacing:.5px;
+    padding-bottom:8px;border-bottom:1px solid #1f2d44}
+  .card code{background:#0a1120;border:1px solid #26374f;border-radius:4px;padding:1px 6px;
+    font-family:Consolas,monospace;font-size:12px;color:#9fe0ff}
+  .card b{color:#ffd88a;font-weight:600}
+  .ok{color:#34d399;font-weight:700}
+  .bad{color:#fb7185;font-weight:700}
+  .muted{color:#8fa3bd}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="kicker">Smart Cabinet · Edge Computer</div>
+  <h1>智能工具柜边缘计算机工程 · 识别主流程 与 周期帧 / 开柜闸门流程</h1>
+  <p class="lead">
+    这两张图回答两个问题：<b>上位机的一条识别指令，是怎么变成一帧全柜实况的</b>；<b>上位机凭什么决定开不开柜</b>。
+    图里所有类名、方法名、字段名与取值都取自 <b>edge/</b> 下的真实代码与上位机协议原文，没有一处是凭空写的。
+  </p>
+  <ol class="guide">
+    <li><b>图 2 怎么读</b>：中间那条<span class="g">蓝色主干</span>就是识别请求走完的 18 步，从上往下读；主干之外是三类分支——<span class="g">黄色</span>是结果分档与异常旁路，<span class="g">灰色虚线</span>是还没上板的能力。</li>
+    <li><b>三档结果</b>：命中且置信度够 → <code>alert_type = none</code>；命中但置信度不够 → <code>low_confidence</code>；没命中 → <code>unknown</code> 且工具号置空，但<b>那一行照样要出现在清单里</b>。</li>
+    <li><b>聚合在控制层</b>：4 个采集线程各自只出本线程的货位，<code>EdgeControl</code> 收齐后按货位号排序去重才发一帧；某个线程失败按降级补齐，保证清单不缺货位。</li>
+    <li><b>图 3 怎么读</b>：3 秒一帧的周期帧 → 上位机看 8 路相机状态 → 只要有一路不是 <code>ok</code> 就拒绝开柜。</li>
+    <li><b>待上板</b>：<b>灰色渐变 + 白字 + 虚线框</b>的节点是尚未实现的能力（Linux/v4l2 后端、真实对焦下发、模型权重推理、照度与脏污判定），线上不会走到。</li>
+  </ol>
+
+  <h2>图 2 · 识别主流程</h2>
+  <div class="legend">
+    <span class="lg"><i class="sw" style="border-top:2.6px solid var(--flow)"></i>主流程（识别请求 → 全柜实况）</span>
+    <span class="lg"><i class="sw" style="border-top:2.6px solid var(--branch)"></i>分支 / 结果分档 / 异常旁路</span>
+    <span class="lg"><i class="sw" style="border-top:2.6px dashed var(--wait)"></i>待上板环节（尚未实现的能力）</span>
+    <span class="lg"><i class="boxsw" style="border:2px dashed #b9c6d6;background:linear-gradient(#98a6b8,#6d7d92)"></i>灰虚框＝待上板 / 未启用</span>
+    <span class="lg"><i class="boxsw" style="border:1.6px solid #5aa9e6;background:linear-gradient(#1d3a5c,#12263d)"></i>深色渐变＝正常主链路</span>
+    <span class="lg"><i class="boxsw" style="border:1.6px solid var(--branch);background:linear-gradient(#4a3a1c,#2e2411)"></i>黄褐色＝旁路（缓存 / 降级 / 复用）</span>
+  </div>
+  <div class="scroller"><div id="host2"></div></div>
+
+  <h2>图 3 · 周期帧与上位机开柜闸门</h2>
+  <div class="scroller"><div id="host3"></div></div>
+
+  <div class="panel">
+    <div class="card" id="card-check">
+      <h3>布局自检</h3>
+      <div id="check-body">—</div>
+    </div>
+    <div class="card" id="card-note">
+      <h3>读图要点</h3>
+      <div id="note-body">—</div>
+    </div>
+    <div class="card" id="card-fact">
+      <h3>关键事实（与代码一致）</h3>
+      <div id="fact-body">—</div>
+    </div>
+  </div>
+</div>
+
+<script>
+"use strict";
+/* =======================================================================
+   流程图引擎：数据驱动 + 自动排版 + 正交折线 + 同层重叠 / 文字超宽自检
+   ======================================================================= */
+const esc = s => String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+function textW(s, size){
+  let w = 0;
+  for(const ch of String(s)){
+    const c = ch.codePointAt(0);
+    if(c > 0x2e80) w += size;                 /* 中文 / 全角 */
+    else if(ch === " ") w += size * 0.32;
+    else w += size * 0.56;                    /* ASCII 近似 */
+  }
+  return w;
+}
+/* 按可用宽度折行（中文逐字断行，英文按空格优先） */
+function wrapText(text, maxW, size){
+  const out = [];
+  let line = "";
+  for(const ch of String(text)){
+    if(ch === "\n"){ out.push(line); line = ""; continue; }
+    if(textW(line + ch, size) > maxW && line !== ""){
+      out.push(line); line = "";
+    }
+    line += ch;
+  }
+  if(line !== "") out.push(line);
+  return out.length ? out : [""];
+}
+
+const FS_TITLE = 18;      /* 节点标题字号（≥17） */
+const FS_SUB  = 14;       /* 节点说明字号（≥13） */
+const TITLE_LINE = 27, SUB_LINE = 23, PAD_TOP = 16, PAD_BOT = 16, PAD_X = 20;
+
+/* 节点配色：全部深色底 + 白字，无白底 */
+const KINDSTYLE = {
+  step:   {c1:"#1d3a5c", c2:"#12263d", bd:"#5aa9e6", name:"#f4f8ff", sub:"#c3d2e6"},
+  host:   {c1:"#154640", c2:"#0c2b27", bd:"#4fd1c5", name:"#f4f8ff", sub:"#c3d2e6"},
+  dec:    {c1:"#3a2b58", c2:"#241b39", bd:"#b58cf0", name:"#f4f8ff", sub:"#d6cbec"},
+  branch: {c1:"#4a3a1c", c2:"#2e2411", bd:"#e0c46c", name:"#f7f3e6", sub:"#e2d6b4"},
+  wait:   {c1:"#98a6b8", c2:"#6d7d92", bd:"#c3cedb", name:"#ffffff", sub:"#f2f6fb"}
+};
+const EDGESTYLE = {
+  flow:   {color:"#38bdf8", dash:"",    w:2.2, marker:"url(#mFlow)"},
+  branch: {color:"#e0c46c", dash:"",    w:2.2, marker:"url(#mBranch)"},
+  wait:   {color:"#9aa7b8", dash:"7 5", w:2.0, marker:"url(#mWait)"}
+};
+
+/* =======================================================================
+   图 2：识别主流程
+   ======================================================================= */
+const F2 = {
+  cols: {
+    left:  {x:60,   w:960},
+    main:  {x:1120, w:1120},
+    right: {x:2320, w:960}
+  },
+  lanes: {L1:1060, R1:2258, R2:2296},
+  chain: [
+    {id:"M1", label:"上位机下发识别请求", sub:"recognize_req：type / request_id / timestamp", kind:"host"},
+    {id:"M2", label:"TCP 解码切帧", sub:"TcpDecodeThread：recv 累积缓冲 → 按 \\n 切帧 → 坏帧丢弃并继续", kind:"step"},
+    {id:"M3", label:"解码结果送控制层", sub:"TcpControlLayer.onSignalDecoded → EdgeControl.routeSignal", kind:"step"},
+    {id:"M4", label:"EdgeControl 幂等判定", sub:"取 request_id：先查已完成请求，再查在途请求", kind:"dec"},
+    {id:"M5", label:"拉起 4 组采集", sub:"CaptureTrigger.triggerCapture → UsbController.beginScan：4 组 CaptureWorker，每组左右 2 路", kind:"step"},
+    {id:"M6", label:"CaptureWorker 双路取帧", sub:"左右各 1 路 readFrame → IFrameSink.onFrameCaptured(workerId, frames, requestId)", kind:"step"},
+    {id:"M7", label:"触发识别", sub:"EdgeControl.onFrameCaptured → RecognitionController.trigger(workerId, request_id, frames)", kind:"step"},
+    {id:"M8", label:"拉起识别线程", sub:"RecognitionController.trigger：worker 空闲校验 → 新建 RecognitionWorker 并启动", kind:"step"},
+    {id:"M9", label:"对照表链路扫描", sub:"RecognitionWorker.runTableRecognition：只处理本 worker 归属的对照表行", kind:"step"},
+    {id:"M10", label:"双路裁切拼成全景", sub:"FrameStitcher.stitch：五五分 + 垂直居中裁切 → 仅沿 x 轴偏移拼接", kind:"step"},
+    {id:"M11", label:"按对照表逐行裁 ROI", sub:"Cv2FrameStitcher.crop(全景, 对照表行)：按 rectX1/rectY1/rectX2/rectY2 裁出该货位区域", kind:"step"},
+    {id:"M12", label:"ROI 内推理标志", sub:"YoloEngine.infer(roi_image) → 类别名 + 置信度", kind:"step"},
+    {id:"M13", label:"标志命中判定", sub:"matchMarker：先按类别组合表折算物品名，组合表缺项时按 marker_id 直映", kind:"dec"},
+    {row:[
+      {id:"C1", col:"left",  label:"命中标志且置信度 ≥ 该行下限", kind:"branch",
+       sub:"alert_type = none\ntool_id = 对照表 tool_id\nconfidence = 实际置信度"},
+      {id:"C2", col:"main",  label:"命中标志但置信度 < 该行下限", kind:"branch",
+       sub:"alert_type = low_confidence\ntool_id = 对照表 tool_id\nconfidence = 实际置信度"},
+      {id:"C3", col:"right", label:"未命中标志", kind:"branch",
+       sub:"alert_type = unknown\ntool_id = \"\"（空串）\nconfidence = 0.0"}
+    ]},
+    {id:"M14", label:"产出该行协议条目", sub:"buildRowItem：position / tool_id / confidence / alert_type 四键", kind:"step"},
+    {id:"M15", label:"组装识别应答", sub:"buildAck → RecognitionWorker.emitResult → RecognitionController → EdgeControl.onRecognitionResult", kind:"step"},
+    {id:"M16", label:"4 个 worker 结果聚合", sub:"EdgeControl.completeRequestIfReady：上报线程 + 失败线程 覆盖到期望线程数才出帧；按 position 排序去重", kind:"step"},
+    {id:"M17", label:"应答排空发出", sub:"EdgeDispatchThread 周期调用 EdgeControl.dispatchOutbox", kind:"step"},
+    {id:"M18", label:"上位机收到全柜实况", sub:"recognize_ack：items 覆盖本机组全部已登记货位，一货位一行不重复", kind:"host"}
+  ],
+  side: [
+    {id:"B1", col:"right", anchor:"M4", label:"命中已完成请求", kind:"branch", sub:"复用上次应答并重新入队，不重复扫描"},
+    {id:"B2", col:"right", anchor:"M4", dy:170, label:"同一 request_id 在途", kind:"branch", sub:"不重复触发扫描，等在途结果"},
+    {id:"E1", col:"right", anchor:"M7", label:"某组采集或识别失败", kind:"branch", sub:"onCaptureError / onRecognitionError → enqueueDegradedFrame"},
+    {id:"E2", col:"right", anchor:"M7", dy:170, label:"失败线程按降级补齐", kind:"branch", sub:"该线程货位：tool_id 空串 / confidence 0.0 / alert_type unknown"},
+    {id:"L1", col:"left",  anchor:"M5", label:"Linux / v4l2 后端（待上板）", kind:"wait", sub:"CameraDevice 的 CAP_V4L2 分支：固定路径打开与 v4l2 对焦"},
+    {id:"L2", col:"left",  anchor:"M6", label:"真实相机对焦下发（待上板）", kind:"wait", sub:"CameraDevice.setAutoFocus / setFocusPosition：Windows 走 CAP_DSHOW 属性"},
+    {id:"L3", col:"left",  anchor:"M12", label:"模型权重推理（待上板）", kind:"wait", sub:"YoloEngine：ultralytics / onnxruntime 推理后端，权重到位后启用；rknn 预留切换点"},
+    {id:"D1", col:"left",  anchor:"M17", label:"链路断开：应答入事件缓存", kind:"branch", sub:"EventCache.cacheEvent：按入队顺序保存"},
+    {id:"D2", col:"left",  anchor:"M17", dy:170, label:"链路恢复：补发缓存应答", kind:"branch", sub:"onLinkUp → EventCache.flush：按补发开关补发或丢弃"}
+  ],
+  edges: [
+    /* 主干 */
+    {f:"M1", t:"M2"}, {f:"M2", t:"M3"}, {f:"M3", t:"M4"}, {f:"M4", t:"M5"},
+    {f:"M5", t:"M6"}, {f:"M6", t:"M7"}, {f:"M7", t:"M8"}, {f:"M8", t:"M9"},
+    {f:"M9", t:"M10"}, {f:"M10", t:"M11"}, {f:"M11", t:"M12"}, {f:"M12", t:"M13"},
+    {f:"M14", t:"M15"}, {f:"M15", t:"M16"}, {f:"M16", t:"M17"}, {f:"M17", t:"M18"},
+    /* 三档结果 */
+    {f:"M13", t:"C1", kind:"branch", label:"命中",     via:[["@cx:M13","@rowTop"],["@cx:C1","@rowTop"]], to:"t"},
+    {f:"M13", t:"C2", kind:"branch", label:"置信不足", via:[["@cx:M13","@rowTop"],["@cx:C2","@rowTop"]], to:"t"},
+    {f:"M13", t:"C3", kind:"branch", label:"未命中",   via:[["@cx:M13","@rowTop"],["@cx:C3","@rowTop"]], to:"t"},
+    {f:"C1", t:"M14", kind:"branch", via:[["@cx:C1","@rowBot"],["@cx:M14","@rowBot"]], to:"t"},
+    {f:"C2", t:"M14", kind:"branch", via:[["@cx:C2","@rowBot"],["@cx:M14","@rowBot"]], to:"t"},
+    {f:"C3", t:"M14", kind:"branch", via:[["@cx:C3","@rowBot"],["@cx:M14","@rowBot"]], to:"t"},
+    /* 幂等分支 */
+    {f:"M4", t:"B1", kind:"branch", label:"命中"},
+    {f:"M4", t:"B2", kind:"branch", label:"在途", via:[["@r:M4","@cy:M4"],["@lane:R2","@cy:M4"],["@lane:R2","@cy:B2"]], to:"l"},
+    {f:"B1", t:"M17", kind:"branch", label:"复用上次应答", via:[["@cx:B1","@b:B1+46"],["@lane:R1","@b:B1+46"],["@lane:R1","@cy:M17"]], to:"r"},
+    {f:"B2", t:"M17", kind:"branch", label:"等在途结果", via:[["@cx:B2","@b:B2+46"],["@lane:R2","@b:B2+46"],["@lane:R2","@cy:M17"]], to:"r"},
+    /* 降级旁路 */
+    {f:"M6", t:"E1", kind:"branch", label:"失败", via:[["@r:M6","@cy:M6"],["@lane:R2","@cy:M6"],["@lane:R2","@cy:E1"]], to:"l"},
+    {f:"E1", t:"E2", kind:"branch"},
+    {f:"E2", t:"M16", kind:"branch", label:"降级补齐后出帧", via:[["@cx:E2","@b:E2+46"],["@lane:R1","@b:E2+46"],["@lane:R1","@cy:M16"]], to:"r"},
+    /* 断链缓存旁路 */
+    {f:"M17", t:"D1", kind:"branch", label:"链路 DOWN"},
+    {f:"D1", t:"D2", kind:"branch"},
+    {f:"D2", t:"M18", kind:"branch", label:"补发后到达", via:[["@r:D2","@cy:D2"],["@lane:L1","@cy:D2"],["@lane:L1","@cy:M18"]], to:"l"},
+    /* 待上板依赖 */
+    {f:"L1", t:"M5", kind:"wait", label:"依赖"},
+    {f:"L2", t:"M6", kind:"wait", label:"依赖"},
+    {f:"L3", t:"M12", kind:"wait", label:"依赖"}
+  ]
+};
+
+/* =======================================================================
+   图 3：周期帧与开柜闸门
+   ======================================================================= */
+const F3 = {
+  cols: {
+    main:  {x:820, w:1120},
+    right: {x:2100, w:700}
+  },
+  lanes: {L1:300, R1:2000},
+  chain: [
+    {id:"G1", label:"3 秒定时", sub:"TcpHeartThread：周期取自 heart_interval_sec；链路非 UP 不发送", kind:"step"},
+    {id:"G2", label:"组 periodic 帧", sub:"type = periodic\nuptime_sec = monotonic() - startedAt\nsoftware_version + camera_status[8 路]", kind:"step"},
+    {id:"G3", label:"填 8 路相机状态", sub:"UsbController.getCameraStatus() → CAM1..CAM8", kind:"step"},
+    {id:"G4", label:"逐路判定状态值", sub:"取图失败、从未成功打开、设备缺失 → offline；否则 → ok", kind:"dec"},
+    {id:"G5", label:"帧发往上位机", sub:"TcpComm.encodeFrame：一行一个紧凑 JSON + 换行符", kind:"step"},
+    {id:"G6", label:"上位机解析 periodic 帧", sub:"取出 uptime_sec / software_version / camera_status", kind:"host"},
+    {id:"G7", label:"8 路里任一路 status ≠ ok？", sub:"只要有 offline 即拒绝开柜；8 路全 ok 才放行", kind:"dec"},
+    {row:[
+      {id:"G8", x:380,  w:1040, label:"拒绝开柜并提示", kind:"branch", sub:"提示异常路号与状态值\n该路不参与开柜放行"},
+      {id:"G9", x:1560, w:1040, label:"允许开柜", kind:"branch", sub:"8 路全部为 ok 才放行"}
+    ]},
+    {id:"G10", label:"上位机在线判定", sub:"TCP 断开立即离线；周期帧停发 15 秒离线", kind:"step"}
+  ],
+  side: [
+    {id:"R1", col:"right", anchor:"G4", label:"8 路状态取值集合", kind:"step", sub:"camera_status 每路只能取下面 2 个值"},
+    {id:"V1", col:"right", anchor:"G4", dy:200, x:2100, w:150, label:"ok", kind:"step"},
+    {id:"V2", col:"right", anchor:"G4", dy:200, x:2280, w:150, label:"offline", kind:"step"},
+    {id:"S1", col:"right", anchor:"G4", dy:380, label:"状态只有正常与不可用两种", kind:"wait",
+     sub:"设备缺失、从未成功打开、取图失败一律归 offline\n照度不足与镜头脏污需图像分析，本期不设取值"}
+  ],
+  edges: [
+    {f:"G1", t:"G2"}, {f:"G2", t:"G3"}, {f:"G3", t:"G4"}, {f:"G4", t:"G5"}, {f:"G5", t:"G6"},
+    {f:"G6", t:"G7"},
+    {f:"G7", t:"G8", kind:"branch", label:"是", via:[["@cx:G7","@rowTop"],["@cx:G8","@rowTop"]], to:"t"},
+    {f:"G7", t:"G9", kind:"branch", label:"否", via:[["@cx:G7","@rowTop"],["@cx:G9","@rowTop"]], to:"t"},
+    {f:"G4", t:"R1", kind:"branch", label:"取值集合"},
+    {f:"R1", t:"V1", kind:"branch", via:[["@cx:R1","@vRowTop"],["@cx:V1","@vRowTop"]], to:"t"},
+    {f:"R1", t:"V2", kind:"branch", via:[["@cx:R1","@vRowTop"],["@cx:V2","@vRowTop"]], to:"t"},
+    {f:"G4", t:"S1", kind:"wait", label:"说明", via:[["@b:G4","@cy:G4"],["@t:S1","@cy:G4"]], to:"t"},
+    {f:"G6", t:"G10", kind:"branch", label:"并行判定", via:[["@l:G6","@cy:G6"],["@lane:L1","@cy:G6"],["@lane:L1","@cy:G10"]], to:"l"}
+  ]
+};
+
+/* =======================================================================
+   渲染
+   ======================================================================= */
+function nodeBox(n){
+  const b = {x:n.x, y:n.y, w:n.w, h:n.h};
+  b.cx = b.x + b.w/2; b.cy = b.y + b.h/2;
+  return b;
+}
+function pt(b, a){
+  if(a === "t") return [b.cx, b.y];
+  if(a === "b") return [b.cx, b.y + b.h];
+  if(a === "l") return [b.x, b.cy];
+  return [b.x + b.w, b.cy];
+}
+const PP = p => p[0].toFixed(1) + "," + p[1].toFixed(1);
+function poly(pts){ let d = "M" + PP(pts[0]); for(let i=1;i<pts.length;i++) d += " L" + PP(pts[i]); return d; }
+
+/* 折行 + 量尺 */
+function wrapLines(n){
+  if(!n.sub) return [];
+  const avail = n.w - PAD_X*2;
+  return wrapText(n.sub, avail, FS_SUB);
+}
+function measureHeight(n){
+  return PAD_TOP + TITLE_LINE + wrapLines(n).length * SUB_LINE + PAD_BOT;
+}
+function measure(F, n){
+  n.lines = wrapLines(n);
+  let tw = textW(n.label, FS_TITLE);
+  n.lines.forEach(l => { tw = Math.max(tw, textW(l, FS_SUB)); });
+  n.tw = tw;
+  n.h = PAD_TOP + TITLE_LINE + n.lines.length * SUB_LINE + PAD_BOT;
+  n.w = Math.max(n.w, Math.ceil(tw) + PAD_X*2);
+}
+
+/* 主链 + 侧列排版 */
+function layout(F){
+  const nodes = [];
+  const byId = {};
+  const mk = src => {
+    const n = Object.assign({}, src);
+    nodes.push(n); byId[n.id] = n;
+    return n;
+  };
+  /* 1) 建节点（先给临时坐标，后面统一排） */
+  F.chain.forEach(item => {
+    if(item.row){
+      item.row.forEach(cell => {
+        const col = F.cols[cell.col] || {x:cell.x, w:cell.w};
+        mk(Object.assign({}, cell, {x:col.x, w:col.w, y:0}));
+      });
+    } else {
+      const col = F.cols.main;
+      mk(Object.assign({}, item, {x:col.x, w:col.w, y:0}));
+    }
+  });
+  F.side.forEach(s => {
+    const col = F.cols[s.col] || {x:s.x, w:s.w};
+    mk(Object.assign({}, s, {x:(s.x !== undefined ? s.x : col.x), w:(s.w !== undefined ? s.w : col.w), y:0}));
+  });
+  /* 2) 量尺 */
+  nodes.forEach(n => measure(F, n));
+  /* 3) 主链纵向排版 */
+  let y = 70;
+  F.chain.forEach(item => {
+    if(item.row){
+      const rowY = y + 46;
+      const rowH = Math.max(...item.row.map(c => byId[c.id].h));
+      item.row.forEach(c => { byId[c.id].y = rowY; });
+      F.branchRow = {y:rowY, h:rowH};
+      y = rowY + rowH + 80;
+    } else {
+      const n = byId[item.id];
+      n.y = y;
+      y += n.h + 64;
+    }
+  });
+  /* 4) 侧列按锚点对齐 */
+  F.side.forEach(s => {
+    const n = byId[s.id], a = byId[s.anchor];
+    n.y = a.y + (a.h - n.h)/2 + (s.dy || 0);
+  });
+  nodes.forEach(n => { n.box = nodeBox(n); });
+  F.nodes = nodes;
+  F.byId = byId;
+  F.mainBottom = y;
+  /* V 状态行（图 3 右侧取值集合） */
+  const vs = F.nodes.filter(n => /^V\d$/.test(n.id));
+  if(vs.length){
+    F.vRowTop = Math.min(...vs.map(n => n.y)) - 36;
+    F.vRowBot = Math.max(...vs.map(n => n.y + n.h)) + 36;
+  }
+  /* 画布尺寸（底部留出图例的位置） */
+  const maxX = Math.max(...nodes.map(n => n.x + n.w));
+  F.w = Math.max(maxX + 60, F.cols.right.x + F.cols.right.w + 60);
+  F.h = Math.max(F.mainBottom, ...nodes.map(n => n.y + n.h)) + 150 + 236;
+  return F;
+}
+
+/* waypoint 记号解析：@cx:ID / @cy:ID / @l:ID / @r:ID / @t:ID / @b:ID(+N) / @lane:KEY / @rowTop / @rowBot / @vRowTop / @vRowBot */
+function resolveSpec(F, spec, axis){
+  if(typeof spec === "number") return spec;
+  const s = String(spec);
+  const m = s.match(/^@(cx|cy|l|r|t|b):([A-Za-z0-9_]+)([+-]\d+)?$/);
+  if(m){
+    const n = F.byId[m[2]];
+    const off = m[3] ? parseInt(m[3], 10) : 0;
+    if(m[1] === "cx") return n.box.cx;
+    if(m[1] === "cy") return n.box.cy;
+    if(m[1] === "l")  return n.box.x;
+    if(m[1] === "r")  return n.box.x + n.box.w;
+    if(m[1] === "t")  return n.box.y + off;
+    if(m[1] === "b")  return n.box.y + n.box.h + off;
+  }
+  if(s.indexOf("@lane:") === 0) return F.lanes[s.slice(6)];
+  if(s === "@rowTop") return F.branchRow.y - 34;
+  if(s === "@rowBot") return F.branchRow.y + F.branchRow.h + 34;
+  if(s === "@vRowTop") return F.vRowTop;
+  if(s === "@vRowBot") return F.vRowBot;
+  return 0;
+}
+
+/* 边路由 */
+function inferAnchor(box, p, isStart){
+  const dx = p[0] - box.cx, dy = p[1] - box.cy;
+  if(Math.abs(dx) < Math.abs(dy)) return (isStart ? (dy > 0 ? "b" : "t") : (dy > 0 ? "t" : "b"));
+  return (isStart ? (dx > 0 ? "r" : "l") : (dx > 0 ? "l" : "r"));
+}
+function routeEdge(F, e){
+  const s = F.byId[e.f], t = F.byId[e.t];
+  if(e.via && e.via.length){
+    const raw = e.via.map(v => [resolveSpec(F, v[0], "x"), resolveSpec(F, v[1], "y")]);
+    const first = raw[0], last = raw[raw.length-1];
+    const sa = e.from || inferAnchor(s.box, first, true);
+    const ta = e.to   || inferAnchor(t.box, last, false);
+    const pts = [pt(s.box, sa)];
+    raw.forEach(v => pts.push(v));
+    pts.push(pt(t.box, ta));
+    return pts;
+  }
+  if(Math.abs(s.box.cy - t.box.cy) < 8 && Math.abs(s.box.cx - t.box.cx) > 8){
+    return s.box.cx < t.box.cx ? [pt(s.box,"r"), pt(t.box,"l")] : [pt(s.box,"l"), pt(t.box,"r")];
+  }
+  if(t.box.y > s.box.y + 10){
+    const mid = s.box.y + s.box.h + Math.max(18, (t.box.y - s.box.y - s.box.h) * 0.45);
+    return [pt(s.box,"b"), [s.box.cx, mid], [t.box.cx, mid], pt(t.box,"t")];
+  }
+  const mid = t.box.y + t.box.h + Math.max(18, (s.box.y - t.box.y - t.box.h) * 0.45);
+  return [pt(s.box,"t"), [s.box.cx, mid], [t.box.cx, mid], pt(t.box,"b")];
+}
+
+function renderFlow(F, hostId){
+  layout(F);
+  const p = [];
+  p.push('<svg id="root' + hostId.replace("host","") + '" xmlns="http://www.w3.org/2000/svg" width="' + F.w + '" height="' + F.h +
+         '" viewBox="0 0 ' + F.w + ' ' + F.h + '" font-family="Microsoft YaHei, Segoe UI, sans-serif">');
+  p.push('<defs>' +
+    '<marker id="mFlow' + hostId + '" viewBox="0 0 10 10" refX="9.2" refY="5" markerWidth="12" markerHeight="12" markerUnits="userSpaceOnUse" orient="auto"><path d="M0,0.8 L10,5 L0,9.2 Z" fill="context-stroke"/></marker>' +
+    '<marker id="mBranch' + hostId + '" viewBox="0 0 10 10" refX="9.2" refY="5" markerWidth="12" markerHeight="12" markerUnits="userSpaceOnUse" orient="auto"><path d="M0,0.8 L10,5 L0,9.2 Z" fill="context-stroke"/></marker>' +
+    '<marker id="mWait' + hostId + '" viewBox="0 0 10 10" refX="9.2" refY="5" markerWidth="11" markerHeight="11" markerUnits="userSpaceOnUse" orient="auto"><path d="M1,1 L9,5 L1,9" fill="none" stroke="context-stroke" stroke-width="1.8"/></marker>' +
+    '<filter id="sh2' + hostId + '" x="-30%" y="-30%" width="160%" height="160%"><feDropShadow dx="0" dy="3" stdDeviation="3.2" flood-color="#000" flood-opacity="0.62"/></filter>' +
+    '</defs>');
+  p.push('<rect x="0" y="0" width="' + F.w + '" height="' + F.h + '" fill="#060b14"/>');
+
+  /* 竖向走线通道参考线 */
+  Object.keys(F.lanes).forEach(k => {
+    const lx = F.lanes[k];
+    p.push('<line x1="' + lx + '" y1="40" x2="' + lx + '" y2="' + (F.mainBottom-30) +
+           '" stroke="#1f2d45" stroke-width="1.4" stroke-dasharray="6 8"/>');
+  });
+
+  /* 边 */
+  F.edges.forEach(e => {
+    const st = EDGESTYLE[e.kind || "flow"];
+    const dash = st.dash ? ' stroke-dasharray="' + st.dash + '"' : "";
+    e.pts = routeEdge(F, e);
+    p.push('<path d="' + poly(e.pts) + '" fill="none" stroke="' + st.color + '" stroke-width="' + st.w +
+           '"' + dash + ' opacity="0.95" marker-end="' + st.marker + hostId + '"/>');
+  });
+
+  /* 边标签 */
+  F.edges.forEach(e => {
+    if(!e.label) return;
+    const st = EDGESTYLE[e.kind || "flow"];
+    const fs = 14;
+    const w = textW(e.label, fs) + 18;
+    let bx = 0, by = 0, best = -1;
+    for(let i=1;i<e.pts.length;i++){
+      const dx = e.pts[i][0]-e.pts[i-1][0], dy = e.pts[i][1]-e.pts[i-1][1];
+      const len = Math.abs(dx)+Math.abs(dy);
+      if(len > best){ best = len; bx = e.pts[i-1][0]+dx/2; by = e.pts[i-1][1]+dy/2; }
+    }
+    p.push('<g><rect x="' + (bx-w/2).toFixed(1) + '" y="' + (by-16).toFixed(1) + '" width="' + w.toFixed(1) +
+           '" height="22" rx="5" fill="#060b14" fill-opacity="0.96" stroke="' + st.color + '" stroke-opacity="0.75" stroke-width="1.1"/>');
+    p.push('<text x="' + bx.toFixed(1) + '" y="' + (by-0.5).toFixed(1) + '" font-size="' + fs +
+           '" text-anchor="middle" fill="' + st.color + '">' + esc(e.label) + '</text></g>');
+  });
+
+  /* 节点 */
+  F.nodes.forEach(n => {
+    const k = KINDSTYLE[n.kind];
+    const gid = "n" + hostId + n.id;
+    const dash = n.kind === "wait" ? ' stroke-dasharray="7 5"' : "";
+    p.push('<defs><linearGradient id="' + gid + '" x1="0" y1="0" x2="0" y2="1">' +
+           '<stop offset="0" stop-color="' + k.c1 + '"/><stop offset="1" stop-color="' + k.c2 + '"/></linearGradient></defs>');
+    p.push('<g filter="url(#sh2' + hostId + ')"><rect x="' + n.x.toFixed(1) + '" y="' + n.y.toFixed(1) + '" width="' + n.w.toFixed(1) +
+           '" height="' + n.h.toFixed(1) + '" rx="13" fill="url(#' + gid + ')" stroke="' + k.bd + '" stroke-width="2"' + dash + '/></g>');
+    const nameY = n.y + PAD_TOP + FS_TITLE;
+    p.push('<text x="' + n.box.cx.toFixed(1) + '" y="' + nameY.toFixed(1) + '" font-size="' + FS_TITLE +
+           '" font-weight="700" text-anchor="middle" fill="' + k.name + '">' + esc(n.label) + '</text>');
+    n.lines.forEach((ln, i) => {
+      p.push('<text x="' + n.box.cx.toFixed(1) + '" y="' + (nameY + 24 + i*SUB_LINE).toFixed(1) + '" font-size="' + FS_SUB +
+             '" text-anchor="middle" fill="' + k.sub + '">' + esc(ln) + '</text>');
+    });
+    if(n.kind === "wait"){
+      p.push('<circle cx="' + (n.x+n.w-13).toFixed(1) + '" cy="' + (n.y+13).toFixed(1) + '" r="5.5" fill="#0b1220" stroke="#c3cedb" stroke-width="1.5"/>');
+    }
+  });
+
+  /* 图例（每张图底部都保留） */
+  renderLegend(F, p, hostId);
+  p.push('</svg>');
+  document.getElementById(hostId).innerHTML = p.join("");
+}
+
+function renderLegend(F, p, hostId){
+  const h = 190, y = F.h - h - 26, x = 46, w = F.w - 92;
+  p.push('<rect x="' + x + '" y="' + y + '" width="' + w + '" height="' + h + '" rx="16" fill="#0a1424" stroke="#1f2d45" stroke-width="1.6"/>');
+  p.push('<text x="' + (x+24) + '" y="' + (y+38) + '" font-size="20" font-weight="700" fill="#e8eef7">图例</text>');
+  const lineItems = [
+    ["实线蓝 ＝ 主流程", "#38bdf8", "", "mFlow" + hostId],
+    ["实线黄 ＝ 分支 / 结果分档 / 旁路", "#e0c46c", "", "mBranch" + hostId],
+    ["灰虚线 ＝ 待上板环节（尚未实现）", "#9aa7b8", "7 5", "mWait" + hostId]
+  ];
+  let lx = x + 24, ly = y + 78;
+  lineItems.forEach(it => {
+    p.push('<line x1="' + lx + '" y1="' + (ly-5) + '" x2="' + (lx+44) + '" y2="' + (ly-5) + '" stroke="' + it[1] + '" stroke-width="2.8"' +
+           (it[2] ? ' stroke-dasharray="' + it[2] + '"' : "") + ' marker-end="url(#' + it[3] + ')"/>');
+    p.push('<text x="' + (lx+56) + '" y="' + ly + '" font-size="14.5" fill="#cbd8e8">' + esc(it[0]) + '</text>');
+    lx += 56 + textW(it[0], 14.5) + 34;
+  });
+  const boxItems = [
+    ["深色渐变 ＝ 正常主链路", "linear-gradient(#1d3a5c,#12263d)", "#5aa9e6", "2", ""],
+    ["灰色渐变 + 白字 + 虚线框 ＝ 待上板 / 未启用（严禁白底）", "linear-gradient(#98a6b8,#6d7d92)", "#c3cedb", "2", "7 5"],
+    ["黄褐色 ＝ 旁路（缓存 / 降级 / 复用）", "linear-gradient(#4a3a1c,#2e2411)", "#e0c46c", "2", ""],
+    ["紫色 ＝ 判定点", "linear-gradient(#3a2b58,#241b39)", "#b58cf0", "2", ""],
+    ["青绿色 ＝ 与上位机交互", "linear-gradient(#154640,#0c2b27)", "#4fd1c5", "2", ""]
+  ];
+  lx = x + 24; ly = y + 126;
+  boxItems.forEach(it => {
+    p.push('<rect x="' + lx + '" y="' + (ly-17) + '" width="26" height="21" rx="4" fill="' + it[1] + '" stroke="' + it[2] + '" stroke-width="' + it[3] + '"' +
+           (it[4] ? ' stroke-dasharray="' + it[4] + '"' : "") + '/>');
+    p.push('<text x="' + (lx+38) + '" y="' + ly + '" font-size="14.5" fill="#cbd8e8">' + esc(it[0]) + '</text>');
+    lx += 38 + textW(it[0], 14.5) + 34;
+  });
+}
+
+/* ---------------- 自检 ---------------- */
+function checkFlow(F){
+  const issues = [];
+  for(let i=0;i<F.nodes.length;i++){
+    for(let j=i+1;j<F.nodes.length;j++){
+      const a = F.nodes[i], b = F.nodes[j];
+      const ox = Math.min(a.x+a.w, b.x+b.w) - Math.max(a.x, b.x);
+      const oy = Math.min(a.y+a.h, b.y+b.h) - Math.max(a.y, b.y);
+      if(ox > 1 && oy > 1) issues.push("节点重叠：" + a.id + " ↔ " + b.id);
+    }
+  }
+  F.nodes.forEach(n => {
+    const avail = n.w - PAD_X*2;
+    if(textW(n.label, FS_TITLE) > avail + 0.5) issues.push("标题放不下：" + n.id);
+    (n.lines||[]).forEach(ln => {
+      if(textW(ln, FS_SUB) > avail + 0.5) issues.push("说明放不下：" + n.id + "「" + ln + "」");
+    });
+    if(n.x < 0 || n.y < 0 || n.x + n.w > F.w || n.y + n.h > F.h) issues.push("出画布：" + n.id);
+  });
+  return issues;
+}
+
+renderFlow(F2, "host2");
+renderFlow(F3, "host3");
+
+(function(){
+  const issues = checkFlow(F2).concat(checkFlow(F3).map(s => "[图3] " + s));
+  const el = document.getElementById("check-body");
+  if(issues.length === 0){
+    el.innerHTML = '<div class="ok">✓ 通过</div><div class="muted">图 2 共 ' + F2.nodes.length +
+      ' 个节点 / ' + F2.edges.length + ' 条连线；图 3 共 ' + F3.nodes.length + ' 个节点 / ' + F3.edges.length +
+      ' 条连线。节点两两不重叠，标题与说明文字均在框内（标题 ' + FS_TITLE + 'px / 说明 ' + FS_SUB + 'px，均未截断）。</div>';
+  } else {
+    el.innerHTML = '<div class="bad">发现 ' + issues.length + ' 处问题</div><ul style="margin:6px 0 0 16px;padding:0">' +
+      issues.map(s => '<li>' + esc(s) + '</li>').join("") + '</ul>';
+  }
+  document.getElementById("note-body").innerHTML =
+    '<div>· 一个 <code>request_id</code> 只扫描一次：命中已完成请求直接复用上次应答，在途请求不再重复触发扫描</div>' +
+    '<div>· 4 个 worker 各自只出本 worker 归属的对照表行，<b>聚合在控制层</b>，收齐后合并成一帧 recognize_ack</div>' +
+    '<div>· items 每项恰好四键：position / tool_id / confidence / alert_type；未命中标志的货位也要出行（tool_id 空串）</div>' +
+    '<div>· 断链期间应答进事件缓存，链路恢复后按补发开关补发或丢弃</div>' +
+    '<div>· 某组采集或识别失败时该线程按降级补齐（tool_id 空串 / confidence 0.0 / alert_type unknown），清单仍覆盖全部已登记货位</div>' +
+    '<div>· 周期帧每 3 秒一帧；上位机拿 8 路 camera_status 做开柜闸门，任一路非 ok 即拒绝开柜</div>';
+  document.getElementById("fact-body").innerHTML =
+    '<div>· 相机路数 8 路 → 4 组双路采集（<code>camera_indices</code> = 1..8）</div>' +
+    '<div>· 状态取值 2 个：<code>ok / offline</code></div>' +
+    '<div>· 取图失败归 offline；照度与脏污需图像分析，本期不设取值</div>' +
+    '<div>· 标志置信度下限取自对照表该行的 <code>confidence</code>，缺省 0.85</div>' +
+    '<div>· 推理超时 3 秒（<code>infer_timeout_sec</code>），超时转业务异常</div>';
+})();
+window.__diagReady = true;
+</script>
+</body>
+</html>

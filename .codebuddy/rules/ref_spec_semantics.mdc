@@ -27,7 +27,7 @@ enabled: true
 | `c3` | `edge/docs/spec/TCP/断线重连/`、`edge/docs/spec/TCP/周期心跳帧/`、`edge/docs/spec/TCP/帧解码/`、`edge/docs/spec/整体流程/阶段0-3.png`、`edge/docs/spec/整体流程/阶段5-7.png` | 退避重连、心跳、半包粘包、断线恢复 |
 | `c4` | `edge/docs/spec/USB_Camera/`、`edge/docs/spec/整体流程/阶段4-5.png` | 并发采集、落盘、滚动删除、自检预留节点 |
 | `c5` | `edge/docs/spec/识别/`、`edge/docs/spec/整体流程/阶段4-5.png` | 触发、3s 超时、归集校验、组 ack |
-| `d` | `edge/docs/spec/整体流程/整合类图代码.txt`、`edge/docs/spec/整体流程/阶段5-7.png` | 事件分发、EventCache、一键停机串行 |
+| `d` | `edge/docs/spec/整体流程/整合类图代码.txt`、`edge/docs/spec/整体流程/阶段5-7.png` | 事件分发、断链不缓存不补发、一键停机串行 |
 
 ## 使用口径
 

@@ -1,4 +1,7 @@
 """平台差异适配：Windows 实现、Linux 骨架与唯一平台工厂。"""
+## @file edge/platform/adapter.py
+## @brief 平台适配实现与工厂：Windows 锁文件、Linux 待补实现，工厂是唯一判断平台的位置
+## @author 袁燕
 from __future__ import annotations
 
 import os
@@ -79,13 +82,25 @@ class LinuxAdapter(IPlatformAdapter):
     def monotonicClock(self) -> float:
         return time.monotonic()
 
-    ## @brief 文件锁骨架，上板后实现
+    ## @brief 文件锁：麒麟 / Linux 用 fcntl.flock 实现非阻塞独占锁
     #  @param filePath 锁文件路径
-    #  @return 锁文件句柄；当前骨架不返回
-    #  @raises NotImplementedError 上板前统一抛出
+    #  @return 锁文件句柄；已被占用时返回 None
+    #  @raises EdgeError 平台不支持时由调用方转译
     def lockFile(self, filePath: str) -> BinaryIO | None:
-        # TODO: 上板后实现 fcntl.flock(fd, LOCK_EX | LOCK_NB)，并补 V4L2 摄像头后端
-        raise NotImplementedError("Linux 文件锁待上板实现")
+        ## fcntl 是 Linux 标准库，函数体内导入避免 Windows 侧引入无关依赖
+        import fcntl
+        import os
+
+        ## 以可读写方式创建锁文件，句柄随对象持有，close 即释放锁
+        fd = os.open(filePath, os.O_CREAT | os.O_RDWR)
+        try:
+            ## 非阻塞排它锁：拿不到说明已有实例在跑
+            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except OSError:
+            os.close(fd)
+            return None
+        ## fdopen 包装成文件对象；其 close() 会关闭 fd 并自动释放 flock 锁
+        return os.fdopen(fd, "a+b")
 
 
 ## @brief 平台适配器工厂；全项目唯一判断 sys.platform 的位置

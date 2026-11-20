@@ -1,4 +1,7 @@
 """推理引擎接口 Fake 实现。"""
+## @file edge/tests/fakes/fake_recognition_engine.py
+## @brief 推理引擎接口 Fake 实现
+## @author 袁燕
 from __future__ import annotations
 
 from edge.interfaces.i_camera import FrameImage

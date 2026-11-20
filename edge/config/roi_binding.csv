@@ -1,0 +1,5 @@
+roi_id,worker_id,drawer_id,position,tool_id,required_type,marker_id,confidence,rect_x1,rect_y1,rect_x2,rect_y2
+roi_01,1,A-01,A-01-01,C01-T0007,wrench,mk_8821,0.85,0,0,320,240
+roi_02,2,A-01,A-01-02,C01-T0008,hammer,mk_8822,0.85,320,0,640,240
+roi_03,3,A-01,A-01-03,C01-T0009,screwdriver,mk_8823,0.85,0,240,320,480
+roi_04,4,A-01,A-01-04,C01-T0010,pliers,mk_8824,0.85,320,240,640,480

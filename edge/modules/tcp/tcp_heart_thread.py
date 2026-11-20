@@ -5,7 +5,11 @@ from collections.abc import Callable
 
 from edge.base.base_thread import BaseThread
 from edge.interfaces.i_logger import ILogger
-from edge.modules.tcp.tcp_comm import TcpComm
+from edge.modules.tcp.tcp_comm import LINK_UP, TcpComm
+
+## @file edge/modules/tcp/tcp_heart_thread.py
+## @brief TCP 周期心跳线程：链路就绪时按周期发出周期帧
+## @author 袁燕
 
 
 ## @brief 周期心跳线程；非 UP 不发送，发送失败经回调去重宣告 DOWN
@@ -17,6 +21,7 @@ class TcpHeartThread(BaseThread):
     #  @param getState 读取链路状态的函数（写入仅经 transitionTo，此处只读）
     #  @param logger 可选日志器
     #  @param onHeartSendFailed 发送失败回调
+    #  @return 无
     def __init__(self, comm: TcpComm, heartIntervalSec: float,
                  buildHeartbeat: Callable[[], dict[str, object]],
                  getState: Callable[[], str], logger: ILogger | None,
@@ -35,18 +40,22 @@ class TcpHeartThread(BaseThread):
 
     ## @brief 单次心跳发送；非 UP 直接返回 False，发送失败返回 False
     #  @return 发送成功返回 True
+    #  @note 这个单发入口被定向用例按名直接调用，主循环也走这里，发送逻辑只留一份。
     def trySendHeartbeat(self) -> bool:
-        if self._getState() != "UP":
+        if self._getState() != LINK_UP:
             return False
         return self._comm.send(self._comm.encodeFrame(self._buildHeartbeat()))
 
     ## @brief 主循环：周期等待、非 UP 跳过、发送失败触发回调
     #  @return 无
+    #  @note 停机指令到达后不再宣告断链，避免停机过程又把重连线程拉起来。
     def runLoop(self) -> None:
         while self.isRunning():
             if not self.interruptibleWait(self._heartIntervalSec):
                 return
-            if self._getState() != "UP":
+            if self._getState() != LINK_UP:
                 continue
-            if not self._comm.send(self._comm.encodeFrame(self._buildHeartbeat())):
+            if not self.trySendHeartbeat():
+                if not self.isRunning():
+                    return
                 self._onHeartSendFailed()

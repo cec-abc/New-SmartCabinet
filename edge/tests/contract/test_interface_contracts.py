@@ -4,6 +4,7 @@ from __future__ import annotations
 import pytest
 
 from edge.interfaces.i_camera import ICameraDevice
+from edge.interfaces.i_camera_focus import ICameraFocus
 from edge.interfaces.i_config import IConfig
 from edge.interfaces.i_logger import ILogger
 from edge.interfaces.i_platform import IPlatformAdapter
@@ -12,6 +13,7 @@ from edge.interfaces.i_sinks import ICaptureSink, IRecognitionSink, SignalSink
 from edge.interfaces.i_socket import ISocket
 from edge.interfaces.i_thread import IThread
 from edge.tests.fakes.fake_camera_device import FakeCameraDevice
+from edge.tests.fakes.fake_camera_focus import FakeCameraFocus
 from edge.tests.fakes.fake_config import FakeConfig
 from edge.tests.fakes.fake_logger import FakeLogger
 from edge.tests.fakes.fake_platform_adapter import FakePlatformAdapter
@@ -118,3 +120,20 @@ def testAllSinkFakesCallable() -> None:
     recognitionSink.onRecognitionError(1, Exception("infer"))
     assert recognitionSink.resultEvents[0][2] == "req-1"
     assert len(recognitionSink.errorEvents) == 1
+
+
+## 契约守护：FakeCameraFocus 实现 ICameraFocus，五个方法可调用并逐条记录对焦指令
+def testFakeCameraFocusSatisfiesContract() -> None:
+    focus = FakeCameraFocus()
+    assert isinstance(focus, ICameraFocus)
+    focus.setAutoFocus(False)
+    focus.setFocusPosition(0.4)
+    assert focus.getFocusPosition() == 0.4
+    focus.setZoomPosition(0.6)
+    assert focus.getZoomPosition() == 0.6
+    assert focus.autoFocus is False
+    assert focus.focusCommands == [
+        ("autoFocus", 0.0),
+        ("focusPosition", 0.4),
+        ("zoomPosition", 0.6),
+    ]

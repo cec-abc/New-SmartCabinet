@@ -1,4 +1,7 @@
 """阶段 c2 补强单测：异步队列、logMode 路由、滚动清理、停机清空与异常堆栈。"""
+## @file edge/tests/unit/test_stage_c2_log_manager.py
+## @brief 阶段 c2 补强单测：异步队列、logMode 路由、滚动清理、停机清空与异常堆栈
+## @author 袁燕
 from __future__ import annotations
 
 import inspect
@@ -22,6 +25,7 @@ from edge.infra.log_manager import (
     TYPE_INFO,
     TYPE_RX,
     TYPE_TX,
+    LogFileWriter,
     LogManager,
     buildRecord,
     encodePayload,
@@ -110,7 +114,7 @@ def readRecords(logDir: Path, prefix: str = TYPE_ALL) -> list[dict[str, object]]
     return records
 
 
-## @brief 并发调用单例入口，用屏障对齐起跑时刻
+## @brief 并发调用单例入口，用屏障使各线程起跑时刻一致
 #  @param logDir 日志目录
 #  @param barrier 并发屏障
 #  @return 单例对象
@@ -281,10 +285,40 @@ def testDiskCleanupRemovesOldestFile(tmp_path: Path) -> None:
     assert oldest.exists() is False
     assert other.exists() is True
     assert writer._removedCount == 1
-    assert ratioCalls["count"] == 2
+    ## 清理改到 writeLine 每次写入检查：trigger-roll 写入检查 2 次（0.1 删除、0.9 停止），
+    ## 停机统计写入再检查 1 次（0.9 立即返回），合计 3 次
+    assert ratioCalls["count"] == 3
 
 
-# 对应验收项 c2-3：停机清空队列剩余并关闭所有 Writer 句柄，重复 stop 幂等
+# 对应验收项 c2-2：不滚动时余量低也能删除最旧文件、保留当前文件
+def testDiskCleanupWithoutRoll(tmp_path: Path) -> None:
+    logDir = tmp_path / "logs"
+    logDir.mkdir()
+    day = DAY_ONE.strftime("%Y%m%d")
+    old = logDir / "ALL_20260101_0001.log"
+    old.write_text("old\n", encoding="utf-8")
+    ratioCalls: dict[str, int] = {"count": 0}
+
+    ## @brief 首次返回低比例触发清理，删一个文件后回升
+    #  @return 剩余比例
+    def readRatio() -> float:
+        ratioCalls["count"] += 1
+        return 0.1 if ratioCalls["count"] == 1 else 0.9
+
+    writer = LogFileWriter(
+        logDir, TYPE_ALL, TEST_MAX_FILE_SIZE, TEST_DISK_THRESHOLD, day, readRatio
+    )
+    current = writer._currentPath
+    ## 同一天且未超上限，writeLine 不触发滚动，但仍应在写入时清理磁盘
+    writer.writeLine(buildRecord(TYPE_INFO, "Biz", "no-roll", DAY_ONE), day)
+    assert writer._sequence == 1
+    assert old.exists() is False
+    assert current.exists() is True
+    assert writer._removedCount == 1
+    writer.closeHandle()
+
+
+# 对应验收项 c2-3：停机清空队列剩余并关闭所有 Writer 句柄，重复 stop 结果一致
 def testStopDrainsQueueAndClosesHandles(tmp_path: Path) -> None:
     logDir = tmp_path / "logs"
     manager = makeManager(logDir)

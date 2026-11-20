@@ -31,7 +31,7 @@ main.py → app_init.py → control/edge_control.py
 | `platform/` | `WindowsAdapter` / `LinuxAdapter` 骨架、`PlatformFactory`、进程文件锁 | 业务逻辑 |
 | `infra/` | `IniConfigManager`、`LogManager` | 业务模块反向引用 |
 | `modules/<module>/` | 该模块的门面、线程、设备/工具，全部留在本目录 | 其他模块、control/ |
-| `control/` | ① 同时指挥 ≥2 个模块的协调对象（`EdgeControl`）；② 仅服务该协调者、生命周期绑定的辅助组件（`EventCache`） | 单一模块门面 |
+| `control/` | ① 同时指挥 ≥2 个模块的协调对象（`EdgeControl`）；② 仅服务该协调者、生命周期绑定的辅助组件（如状态容器） | 单一模块门面 |
 | `tests/fakes/` | 与 `interfaces/` 契约一致的 Fake | 与接口不一致的实现 |
 
 - **单一模块的门面必须留在 `modules/<module>/` 内**，不得因为"方便协调"上提到 `control/`。

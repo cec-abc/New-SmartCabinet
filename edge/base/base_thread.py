@@ -1,4 +1,4 @@
-"""通用线程基类：统一启动幂等、可打断等待与停机生命周期。"""
+"""通用线程基类：统一启动与停机生命周期，提供可打断等待，重复调用只生效一次。"""
 from __future__ import annotations
 
 from abc import abstractmethod
@@ -8,21 +8,26 @@ from edge.exceptions import EdgeError, ErrorCode
 from edge.interfaces.i_logger import ILogger
 from edge.interfaces.i_thread import IThread
 
+## @file edge/base/base_thread.py
+## @brief 通用线程基类：启动与停机只生效一次、可打断等待、线程内异常统一转业务异常
+## @author 袁燕
+
 
 ## @brief 所有业务线程的基类；置停止事件唤醒等待，join 超时强制返回
 class BaseThread(Thread, IThread):
     ## @brief 构造线程
     #  @param name 线程名
     #  @param logger 可选日志器，用于线程顶层异常与停机统计
+    #  @return 无
     def __init__(self, name: str, logger: ILogger | None = None) -> None:
         super().__init__(name=name, daemon=True)
         ## @brief 停止事件，置位后 interruptibleWait 立即返回 False
         self.stopEvent: Event = Event()
-        ## @brief 是否已启动过，保证 start() 幂等
+        ## @brief 是否已启动过，用于让 start() 只拉起一次线程
         self._hasStarted: bool = False
         ## @brief 启动锁，避免并发重复拉起线程
         self._startLock: Lock = Lock()
-        ## @brief 停止锁与请求标记，保证重复 stop 幂等
+        ## @brief 停止锁与请求标记，用于让重复 stop 只执行一次收尾
         self._stopLock: Lock = Lock()
         ## @brief 是否已发出停止请求
         self._stopRequested: bool = False
@@ -38,7 +43,7 @@ class BaseThread(Thread, IThread):
             self._hasStarted = True
         super().start()
 
-    ## @brief 置停止事件、唤醒可打断等待、join 后超时强制返回；重复调用幂等
+    ## @brief 置停止事件、唤醒可打断等待、join 后超时强制返回；重复调用只执行一次收尾
     #  @param timeout 等待线程退出的最长秒数
     #  @return 无
     def stop(self, timeout: float = 3.0) -> None:
@@ -71,7 +76,7 @@ class BaseThread(Thread, IThread):
         except EdgeError as error:
             self._reportError(error)
         except Exception as error:
-            ## 内置异常在跨线程边界前统一转 EdgeError；业务码细分留 c3 / d
+            ## 内置异常在跨线程边界前统一转 EdgeError，统一用 CONFIG 码记录
             self._reportError(EdgeError(ErrorCode.CONFIG, f"{self.name} 运行异常: {error}"))
 
     ## @brief 线程主循环，由子类实现

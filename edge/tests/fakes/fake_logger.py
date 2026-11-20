@@ -1,4 +1,7 @@
 """日志接口 Fake 实现。"""
+## @file edge/tests/fakes/fake_logger.py
+## @brief 日志接口 Fake 实现
+## @author 袁燕
 from __future__ import annotations
 
 from edge.interfaces.i_logger import ILogger

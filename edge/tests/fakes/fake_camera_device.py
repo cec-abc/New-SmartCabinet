@@ -1,4 +1,7 @@
 """摄像头设备接口 Fake 实现。"""
+## @file edge/tests/fakes/fake_camera_device.py
+## @brief 摄像头设备接口 Fake 实现
+## @author 袁燕
 from __future__ import annotations
 
 from edge.interfaces.i_camera import CameraStatus, FrameImage, ICameraDevice

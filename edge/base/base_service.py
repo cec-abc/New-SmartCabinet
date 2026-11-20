@@ -3,8 +3,12 @@ from __future__ import annotations
 
 from abc import ABC
 
+## @file edge/base/base_service.py
+## @brief 通用服务生命周期基类：三个方法默认空实现，子类按需覆盖
+## @author 袁燕
 
-## @brief 三个 Controller 的生命周期基类；默认空实现，子类按需覆盖
+
+## @brief 各控制门面的生命周期基类；默认空实现，子类按需覆盖
 class BaseService(ABC):
     ## @brief 初始化资源，基类默认无操作
     #  @return 无

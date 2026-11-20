@@ -21,7 +21,7 @@
 把 `dual_crop_stitch/` 的平铺实现，按 2026-11-09 定稿的**方案 A**重构为 `edge/` 分层工程：
 `main → app_init → control → modules/*/门面 → base/interfaces/platform/infra`。
 Windows 先跑通，麒麟 Linux / RK3588 留骨架接口（`NotImplementedError` + TODO）上板再补；源码 + venv，不打包。
-重构按固定实施阶段 `0 → a → b → c1 → c2 → c3 → c4 → c5 → d` 逐步递进，一阶段一验收。
+重构按固定实施阶段 `0 → a → b → c1 → c2 → c3 → c4 → c5 → d → c4plus → c5plus → dplus` 逐步递进，一阶段一验收。
 
 ## 2. 权威优先级（从高到低）
 
@@ -79,7 +79,7 @@ Windows 先跑通，麒麟 Linux / RK3588 留骨架接口（`NotImplementedError
 
 | 资产 | 职责 |
 | --- | --- |
-| `edge/docs/refactor/STAGE-STATE.md` | 9 个阶段状态与验收项，初始全 `pending` |
+| `edge/docs/refactor/STAGE-STATE.md` | 12 个阶段状态与验收项，初始全 `pending` |
 | `edge/docs/refactor/HANDOFF-TEMPLATE.md` | 阶段移交模板；每阶段收尾产出一份 handoff |
 | `edge/docs/refactor/stages/<id>/` | `spec-digest.md`（开工）+ `test-report.md`（收尾必交物） |
 | `references/lessons.md` | 跨阶段可复用经验，不写一次性缺陷细节 |
@@ -87,7 +87,8 @@ Windows 先跑通，麒麟 Linux / RK3588 留骨架接口（`NotImplementedError
 
 ## 4. 阶段清单
 
-**共 9 个阶段**：`0 / a / b / c1 / c2 / c3 / c4 / c5 / d`，顺序固定，不跳阶、不合并、不另起平行目录。
+**共 12 个阶段**：`0 / a / b / c1 / c2 / c3 / c4 / c5 / d / c4plus / c5plus / dplus`，顺序固定，不跳阶、不合并、不另起平行目录。
+（`c4plus / c5plus / dplus` 为 2026-11-14 用户批准新增的三个实施阶段，共用 `edge/docs/refactor/stages/dplus/spec-digest.md` 作为签名契约与事实基线，**§8 修订节优先级最高**。）
 
 | 阶段 | 交付范围 | 一句话验收 |
 | --- | --- | --- |
@@ -100,6 +101,9 @@ Windows 先跑通，麒麟 Linux / RK3588 留骨架接口（`NotImplementedError
 | `c4` | `modules/usb/` | 4 线程并发拉起并立即返回、落盘、滚动删除 |
 | `c5` | `modules/recognition/` | 3s 超时、组帧、回调 |
 | `d` | `control/` + `app_init.py` + `main.py` | 事件分发、EventCache 补发/丢弃、停机严格串行、Windows 端到端 |
+| `c4plus` | `modules/usb/` + `interfaces/i_camera_focus.py` + `interfaces/i_frame_sink.py` | 循环化流式采集、独立对焦契约、帧回调契约 |
+| `c5plus` | `modules/recognition/` + `infra/roi_binding_loader.py` + `config/roi_binding.csv` | CSV 对照表装载（12 列含 `worker_id`）、四角点裁剪拼接、流式识别 |
+| `dplus` | `control/` + `app_init.py` + `main.py` + `config/config.ini` + `tests/integration/` | 4 个生产断点修复、应答排空、`periodic` 周期帧 8 路状态、端到端联调 |
 
 0/a 的现有 27 个 `.py` 判定为**符合新契约的骨架（非旧代码）**，故目标是
 「先把已有代码看懂、按契约审一遍、补上能说清楚的单测」，**不盲目重写、不以已有实现直接补验收**；

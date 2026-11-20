@@ -38,7 +38,7 @@
 
 4. 编码规范
 4.1 常量与配置
-〖必须〗禁止魔鬼数字。dedupCacheTtl、heartIntervalSec、maxFrameSize、backoffSeq 等参数必须来自构造注入；由上层从 config.ini 读取后传入，模块内部不得 import 配置模块。
+〖必须〗禁止魔鬼数字。heartIntervalSec、maxFrameSize、backoffSeq 等参数必须来自构造注入；由上层从 config.ini 读取后传入，模块内部不得 import 配置模块。
 
 〖必须〗tcp_comm / tcp/ 目录下禁止出现 config、cv2、numpy、vision_core 字样。
 
@@ -106,6 +106,6 @@
 
 〖必须〗base/ 不 import 任何业务模块。
 
-〖必须〗control/ 允许放两类对象：① 跨模块协调对象（同时指挥 ≥2 个模块，如 EdgeControl）；② 仅服务于单一协调者的辅助组件（如缓存、状态容器，生命周期与该协调者绑定）。单一模块的门面必须留在 modules/<module>/ 内。
+〖必须〗control/ 允许放两类对象：① 跨模块协调对象（同时指挥 ≥2 个模块，如 EdgeControl）；② 仅服务于单一协调者的辅助组件（如状态容器，生命周期与该协调者绑定）。单一模块的门面必须留在 modules/<module>/ 内。
 
 〖必须〗tests/fakes/ 中的 Fake 实现必须与 interfaces/ 契约保持一致；新增接口时同步新增 Fake。

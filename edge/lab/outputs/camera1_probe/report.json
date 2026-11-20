@@ -1,0 +1,132 @@
+{
+  "deviceId": 1,
+  "backends": [
+    {
+      "backend": "CAP_MSMF",
+      "opened": true,
+      "default": [
+        640,
+        480
+      ],
+      "defaultFrame": [
+        640,
+        480
+      ],
+      "supported": [
+        [
+          640,
+          480
+        ],
+        [
+          800,
+          600
+        ],
+        [
+          1280,
+          720
+        ],
+        [
+          1920,
+          1080
+        ],
+        [
+          2048,
+          1536
+        ],
+        [
+          3840,
+          2160
+        ]
+      ]
+    },
+    {
+      "backend": "CAP_DSHOW",
+      "opened": true,
+      "default": [
+        640,
+        480
+      ],
+      "defaultFrame": [
+        640,
+        480
+      ],
+      "supported": [
+        [
+          640,
+          480
+        ],
+        [
+          800,
+          600
+        ],
+        [
+          1280,
+          720
+        ],
+        [
+          1920,
+          1080
+        ],
+        [
+          2048,
+          1536
+        ],
+        [
+          2592,
+          1944
+        ],
+        [
+          3840,
+          2160
+        ]
+      ]
+    },
+    {
+      "backend": "CAP_ANY",
+      "opened": true,
+      "default": [
+        640,
+        480
+      ],
+      "defaultFrame": [
+        640,
+        480
+      ],
+      "supported": [
+        [
+          640,
+          480
+        ],
+        [
+          800,
+          600
+        ],
+        [
+          1280,
+          720
+        ],
+        [
+          1920,
+          1080
+        ],
+        [
+          2048,
+          1536
+        ],
+        [
+          3840,
+          2160
+        ]
+      ]
+    }
+  ],
+  "nativeMax": [
+    3840,
+    2160
+  ],
+  "photo": "D:\\CFDZ\\BYJSJ\\New-SmartCabinet\\edge\\lab\\outputs\\camera1_probe\\camera1_snap.jpg",
+  "photoSize": [
+    3840,
+    2160
+  ]
+}

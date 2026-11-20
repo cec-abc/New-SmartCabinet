@@ -1,4 +1,7 @@
 """阶段 c1 补强单测：Fail-Fast、类型推断、default 两分支与双检锁单例。"""
+## @file edge/tests/unit/test_stage_c1_config_manager.py
+## @brief 阶段 c1 补强单测：Fail-Fast、类型推断、default 两分支与双检锁单例
+## @author 袁燕
 from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
@@ -35,7 +38,7 @@ def writeIni(directory: Path, content: str) -> str:
     return str(configPath)
 
 
-## @brief 并发调用单例入口，用屏障对齐起跑时刻
+## @brief 并发调用单例入口，用屏障使各线程起跑时刻一致
 #  @param configPath 配置文件路径
 #  @param barrier 并发屏障
 #  @return 单例对象

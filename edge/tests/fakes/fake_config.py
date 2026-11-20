@@ -1,4 +1,7 @@
 """配置接口 Fake 实现。"""
+## @file edge/tests/fakes/fake_config.py
+## @brief 配置接口 Fake 实现
+## @author 袁燕
 from __future__ import annotations
 
 from typing import Any

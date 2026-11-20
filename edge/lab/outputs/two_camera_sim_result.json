@@ -1,0 +1,41 @@
+{
+  "allPass": true,
+  "checks": [
+    {
+      "id": "C01",
+      "name": "双路取帧闭环",
+      "passed": true,
+      "detail": "收到 2 轮，每轮帧数 [2, 2]"
+    },
+    {
+      "id": "C02",
+      "name": "全景拼接成功",
+      "passed": true,
+      "detail": "全景字节 3151"
+    },
+    {
+      "id": "C03",
+      "name": "请求标识原样回带",
+      "passed": true,
+      "detail": "标识集合 {'sim-req-0001'}"
+    },
+    {
+      "id": "C04",
+      "name": "首帧前定焦完成(F-01)",
+      "passed": true,
+      "detail": "定焦时刻 [107219.89, 107219.89], 首帧时刻 [107220.0, 107220.015]"
+    },
+    {
+      "id": "C05",
+      "name": "定焦指令顺序",
+      "passed": true,
+      "detail": "左=[('autoFocus', 0.0), ('focusPosition', 42.0), ('zoomPosition', 10.0)] 右=[('autoFocus', 0.0), ('focusPosition', 77.0), ('zoomPosition', 20.0)]"
+    },
+    {
+      "id": "C06",
+      "name": "逐路独立焦点值",
+      "passed": true,
+      "detail": "CAM1=42.0, CAM2=77.0"
+    }
+  ]
+}

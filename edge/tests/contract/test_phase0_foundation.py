@@ -26,6 +26,16 @@ def windowsOnly(reason: str) -> Callable[[Callable[[], None]], Callable[[], None
     )
 
 
+## @brief 为仅在 posix 可运行的用例提供带类型的 skipif 装饰器
+#  @param reason 跳过原因，原样传给 pytest.mark.skipif
+#  @return 带类型的 skipif 装饰器
+def posixOnly(reason: str) -> Callable[[Callable[[], None]], Callable[[], None]]:
+    return cast(
+        Callable[[Callable[[], None]], Callable[[], None]],
+        pytest.mark.skipif(os.name != "posix", reason=reason),
+    )
+
+
 ## @brief EdgeError 携带枚举码，字符串含 code.name 便于日志扫描
 def testEdgeErrorCarriesCodeName() -> None:
     error = EdgeError(ErrorCode.FRAME_PARSE, "坏帧")
@@ -40,20 +50,36 @@ def testFactoryReturnsWindowsAdapter() -> None:
     assert isinstance(PlatformFactory.create(), WindowsAdapter)
 
 
-## @brief Linux 骨架的锁方法按方案抛内置 NotImplementedError
+## @brief Linux 适配器锁已落地为 fcntl.flock 真实实现，不再是抛 NotImplementedError 的骨架
+@posixOnly("fcntl 文件锁仅在 Linux 可用")
 def testLinuxAdapterSkeletonRaises() -> None:
-    with pytest.raises(NotImplementedError):
-        LinuxAdapter().lockFile("unused.lock")
-
-
-## @brief 骨架抛出的内置异常在跨模块边界前转换为 CONFIG 业务异常
-def testLinuxSkeletonIsConvertedToEdgeError() -> None:
     with tempfile.TemporaryDirectory() as tempDir:
         lockPath = Path(tempDir) / "edge.lock"
         lock = ProcessFileLock(LinuxAdapter(), str(lockPath))
-        with pytest.raises(EdgeError) as errorInfo:
-            lock.acquire()
-        assert errorInfo.value.code is ErrorCode.CONFIG
+        lock.acquire()
+        try:
+            assert lock.lockHandle is not None
+        finally:
+            lock.release()
+        assert lock.lockHandle is None
+
+
+## @brief Linux 真实锁被占用时 acquire 报 CONFIG；Windows 上验证工厂返回 WindowsAdapter
+def testLinuxSkeletonIsConvertedToEdgeError() -> None:
+    if os.name != "posix":
+        assert isinstance(PlatformFactory.create(), WindowsAdapter)
+        return
+    with tempfile.TemporaryDirectory() as tempDir:
+        lockPath = Path(tempDir) / "edge.lock"
+        first = ProcessFileLock(LinuxAdapter(), str(lockPath))
+        first.acquire()
+        try:
+            second = ProcessFileLock(LinuxAdapter(), str(lockPath))
+            with pytest.raises(EdgeError) as errorInfo:
+                second.acquire()
+            assert errorInfo.value.code is ErrorCode.CONFIG
+        finally:
+            first.release()
 
 
 ## @brief 主进程持锁时，第二进程拿锁失败并报告 CONFIG

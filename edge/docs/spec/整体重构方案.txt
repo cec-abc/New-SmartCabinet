@@ -10,7 +10,7 @@ Python	3.9+，类型标注用 list[str] / dict[str, tuple[dict, float]] / X | No
 日志	对外四个方法 rx / tx / info / error(msg, exception=None)；error 可选附堆栈
 进程锁	做。main.py 第一件事拿锁，拿不到直接退出；Windows msvcrt.locking，Linux fcntl.flock 骨架
 NPU 并发	先不做，trigger() 留 # TODO: NPU 并发限流，实测后加信号量
-补发去重	event_cache.enabled 开关做；协议帧预留 seq 只填不用；去重逻辑先不做
+断链补报	不实现：断链期间不缓存待上报事件，链路恢复后不补发；不设补发开关与缓存队列
 部署	源码 + venv，不打包
 摄像头寻址	固定路径设计：Linux 配置写 /dev/cam_left 这种；Windows 侧写索引
 .so	先不管；接口按“纯函数下沉”设计，控制层永远留 Python
@@ -71,7 +71,6 @@ edge/
   control/
     __init__.py
     edge_control.py
-    event_cache.py
 
   tests/
     unit/
@@ -136,8 +135,7 @@ control/（阶段 d）
 准入标准：必须同时指挥 ≥2 个模块，才配放在 control/。
 
 文件	职责
-edge_control.py	EdgeControl(BaseService)：实现三个 Sink；routeSignal(type) 按注入的 asyncHandlers 字典分发（不写死业务字符串）；onLinkDown 统一决策（停心跳 / 停解码 / 启重连 / 开 EventCache）；stopSystem 严格串行：USB → 识别 → TCP → 日志
-event_cache.py	EventCache：DOWN 时缓存必须送达客户端的事件（识别 ack、失败应答、主动通知）；UP 时按 enabled 补发或丢弃；心跳帧不缓存；每条带递增 seq（只填不用）
+edge_control.py	EdgeControl(BaseService)：实现三个 Sink；routeSignal(type) 按注入的 asyncHandlers 字典分发（不写死业务字符串）；onLinkDown 统一决策（停心跳 / 停解码 / 启重连）；stopSystem 严格串行：USB → 识别 → TCP → 日志
 tests/
 unit/（纯逻辑）、contract/（接口契约，Fake 跑一遍）、integration/（TcpControlLayer + FakeSocket 等）、fakes/（FakeTcp / FakeCamera / FakeEngine / FakeLogger）。
 
@@ -175,4 +173,4 @@ c2	infra/log_manager.py	异步队列；滚动；停机清空；error(exception=e
 c3	modules/tcp/	退避重连；心跳失败去重；解码半包 / 粘包；transitionTo 并发宣告去重；FakeSocket 联调
 c4	modules/usb/	4 线程并发拉起并立即返回；落盘；滚动删除；FakeCamera 联调
 c5	modules/recognition/	3s 超时；组帧；回调；FakeEngine 联调
-d	control/ + app_init.py + main.py	事件分发；EventCache 补发 / 丢弃；一键停机严格串行；进程锁；Windows 端到端
+d	control/ + app_init.py + main.py	事件分发；断链不缓存不补发；一键停机严格串行；进程锁；Windows 端到端

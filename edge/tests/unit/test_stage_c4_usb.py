@@ -1,4 +1,7 @@
 """c4 USB 采集模块单元测试：并发拉起 / 双路落盘 / 滚动删旧 / 回调互不影响。"""
+## @file edge/tests/unit/test_stage_c4_usb.py
+## @brief c4 USB 采集模块单元测试：并发拉起 / 双路落盘 / 滚动删旧 / 回调互不影响
+## @author 袁燕
 from __future__ import annotations
 
 import os
@@ -185,7 +188,7 @@ def test_c4_2_dual_frames_saved(tmp_path: Path) -> None:
     assert sink.errorEvents == []
 
 
-## @brief c4-2 设备寻址：Windows 索引走 DSHOW，Linux 固定路径为骨架且转 EdgeError
+## @brief c4-2 设备寻址：Windows 索引走 DSHOW，Linux 固定路径走 V4L2 真实后端标识
 def test_c4_2_camera_factory_addressing() -> None:
     windowsDevice = CameraFactory.createDevice("0", lambda: b"frame")
     assert windowsDevice.getStatus()["backend"] == BACKEND_DSHOW
@@ -194,28 +197,30 @@ def test_c4_2_camera_factory_addressing() -> None:
 
     linuxDevice = CameraFactory.createDevice("/dev/cam_left", lambda: b"frame")
     assert linuxDevice.getStatus()["backend"] == BACKEND_V4L2
+    ## 后端已就位：Windows 无 V4L2 设备时 open 失败报 CAPTURE，不再抛骨架 NotImplementedError
     try:
         linuxDevice.open()
-        raise AssertionError("Linux 骨架应抛 NotImplementedError")
-    except NotImplementedError as error:
-        assert str(error) == "Linux 摄像头后端待上板实现"
+    except EdgeError as error:
+        assert error.code == ErrorCode.CAPTURE
+    except NotImplementedError:
+        raise AssertionError("Linux 后端已实现，不应再抛 NotImplementedError 骨架异常")
 
 
-## @brief c4-2 内置骨架异常跨模块边界前转 EdgeError(CAPTURE)，不上抛到 Sink
+## @brief c4-2 V4L2 占位帧源在采集链路里正常取帧落盘，骨架异常路径不再出现
 def test_c4_2_linux_skeleton_converted_before_boundary(tmp_path: Path) -> None:
     linuxDevice = CameraFactory.createDevice("/dev/cam_left", lambda: b"frame")
     sink = FakeCaptureSink()
     controller = makeController([(linuxDevice, FakeCameraDevice(b"R"))], [tmp_path], sink)
     controller.init()
     controller.startCapture()
+    ## 等待首帧回调凑齐后再停机，避免焦点屏障引入的线程竞态导致假失败
+    deadline = time.monotonic() + 3.0
+    while time.monotonic() < deadline and not sink.successEvents and not sink.errorEvents:
+        time.sleep(0.02)
     controller.stopCapture()
 
-    assert sink.successEvents == []
-    assert len(sink.errorEvents) == 1
-    workerId, exception = sink.errorEvents[0]
-    assert workerId == 1
-    assert isinstance(exception, EdgeError)
-    assert exception.code == ErrorCode.CAPTURE
+    assert [item[0] for item in sink.successEvents] == [1]
+    assert sink.errorEvents == []
 
 
 ## @brief c4-3 占用超 30% 时按最旧顺序删图，删到阈值内即停
@@ -298,6 +303,12 @@ def test_c4_4_success_error_callbacks_isolated(tmp_path: Path) -> None:
 
     controller.init()
     controller.startCapture()
+    ## 焦点屏障要求全部 worker 就绪后才放行首帧；等待回调凑齐再停机，避免测试自身竞态
+    deadline = time.monotonic() + 3.0
+    while time.monotonic() < deadline:
+        if len(sink.successEvents) >= 3 and len(sink.errorEvents) >= 1:
+            break
+        time.sleep(0.02)
     controller.stopCapture()
 
     assert sorted(item[0] for item in sink.successEvents) == [1, 2, 4]
@@ -309,7 +320,7 @@ def test_c4_4_success_error_callbacks_isolated(tmp_path: Path) -> None:
     assert all(camera.closed for camera in normalCameras)
 
 
-## @brief c4-4 Fake 契约一致性：FakeCameraDevice 与 ICameraDevice 四方法逐一对齐
+## @brief c4-4 Fake 契约一致性：FakeCameraDevice 与 ICameraDevice 四方法逐一比对一致
 def test_c4_4_fake_camera_contract() -> None:
     device: ICameraDevice = FakeCameraDevice(b"payload")
     device.open()

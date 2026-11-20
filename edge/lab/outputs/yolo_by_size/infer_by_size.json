@@ -1,0 +1,34 @@
+{
+  "ultralytics": [
+    {
+      "backend": "ultralytics",
+      "size": 320,
+      "avgMs": 52.08
+    },
+    {
+      "backend": "ultralytics",
+      "size": 640,
+      "avgMs": 209.58
+    },
+    {
+      "backend": "ultralytics",
+      "size": 960,
+      "avgMs": 361.92
+    },
+    {
+      "backend": "ultralytics",
+      "size": 1280,
+      "avgMs": 585.92
+    }
+  ],
+  "onnx": {
+    "backend": "onnxruntime",
+    "onnxInputShape": [
+      1,
+      3,
+      1280,
+      1280
+    ],
+    "note": "onnx 导出时固定形状，改尺寸需重新导出"
+  }
+}

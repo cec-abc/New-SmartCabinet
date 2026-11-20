@@ -1,0 +1,155 @@
+[
+  {
+    "request": [
+      8000,
+      6000
+    ],
+    "opened": true,
+    "fourcc": "MJPG",
+    "readback": [
+      8000,
+      6000
+    ],
+    "frames": 10,
+    "elapsedSeconds": 4.047,
+    "fps": 2.47,
+    "msPerFrame": 404.7,
+    "megapixels": 48.0
+  },
+  {
+    "request": [
+      4000,
+      3000
+    ],
+    "opened": true,
+    "fourcc": "MJPG",
+    "readback": [
+      4000,
+      3000
+    ],
+    "frames": 10,
+    "elapsedSeconds": 1.093,
+    "fps": 9.15,
+    "msPerFrame": 109.3,
+    "megapixels": 12.0
+  },
+  {
+    "request": [
+      3840,
+      2160
+    ],
+    "opened": true,
+    "fourcc": "MJPG",
+    "readback": [
+      3840,
+      2160
+    ],
+    "frames": 10,
+    "elapsedSeconds": 0.781,
+    "fps": 12.8,
+    "msPerFrame": 78.1,
+    "megapixels": 8.29
+  },
+  {
+    "request": [
+      2592,
+      1944
+    ],
+    "opened": true,
+    "fourcc": "MJPG",
+    "readback": [
+      2592,
+      1944
+    ],
+    "frames": 10,
+    "elapsedSeconds": 0.828,
+    "fps": 12.08,
+    "msPerFrame": 82.8,
+    "megapixels": 5.04
+  },
+  {
+    "request": [
+      2048,
+      1536
+    ],
+    "opened": true,
+    "fourcc": "MJPG",
+    "readback": [
+      2048,
+      1536
+    ],
+    "frames": 10,
+    "elapsedSeconds": 0.797,
+    "fps": 12.55,
+    "msPerFrame": 79.7,
+    "megapixels": 3.15
+  },
+  {
+    "request": [
+      1920,
+      1080
+    ],
+    "opened": true,
+    "fourcc": "YUY2",
+    "readback": [
+      1920,
+      1080
+    ],
+    "frames": 10,
+    "elapsedSeconds": 1.703,
+    "fps": 5.87,
+    "msPerFrame": 170.3,
+    "megapixels": 2.07
+  },
+  {
+    "request": [
+      1280,
+      720
+    ],
+    "opened": true,
+    "fourcc": "MJPG",
+    "readback": [
+      1280,
+      720
+    ],
+    "frames": 10,
+    "elapsedSeconds": 0.329,
+    "fps": 30.4,
+    "msPerFrame": 32.9,
+    "megapixels": 0.92
+  },
+  {
+    "request": [
+      800,
+      600
+    ],
+    "opened": true,
+    "fourcc": "YUY2",
+    "readback": [
+      800,
+      600
+    ],
+    "frames": 10,
+    "elapsedSeconds": 0.453,
+    "fps": 22.08,
+    "msPerFrame": 45.3,
+    "megapixels": 0.48
+  },
+  {
+    "request": [
+      640,
+      480
+    ],
+    "opened": true,
+    "fourcc": "YUY2",
+    "readback": [
+      640,
+      480
+    ],
+    "frames": 10,
+    "elapsedSeconds": 0.469,
+    "fps": 21.32,
+    "msPerFrame": 46.9,
+    "megapixels": 0.31
+  }
+]

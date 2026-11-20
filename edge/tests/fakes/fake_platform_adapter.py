@@ -1,4 +1,7 @@
 """平台适配器接口 Fake 实现。"""
+## @file edge/tests/fakes/fake_platform_adapter.py
+## @brief 平台适配器接口 Fake 实现
+## @author 袁燕
 from __future__ import annotations
 
 from typing import BinaryIO

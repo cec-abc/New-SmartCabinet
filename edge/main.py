@@ -12,6 +12,10 @@ from edge.interfaces.i_platform import IPlatformAdapter
 from edge.platform.adapter import PlatformFactory
 from edge.platform.file_lock import DEFAULT_LOCK_FILE_NAME, ProcessFileLock
 
+## @file edge/main.py
+## @brief 进程入口：取进程锁、装配、注册信号、启动、等待退出、串行停机
+## @author 袁燕
+
 ## @brief 装配参数提供器（注入，便于测试替换）
 PartsProvider = Callable[[], AssemblyParts]
 ## @brief 平台适配器提供器（注入，便于测试替换）
@@ -55,7 +59,7 @@ def waitForStop(stopEvent: Event) -> None:
     stopEvent.wait()
 
 
-## @brief 进程入口；不用 try/except 或 if not success 包裹业务流程
+## @brief 进程入口；按取锁、装配、注册信号、启动、等待退出、串行停机的顺序执行
 #  @param partsProvider 装配参数提供器
 #  @param signalRegistrar 信号注册器
 #  @param exitWaiter 退出等待器

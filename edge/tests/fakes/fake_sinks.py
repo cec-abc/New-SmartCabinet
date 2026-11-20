@@ -1,4 +1,7 @@
 """三类事件回调接口的 Fake 实现。"""
+## @file edge/tests/fakes/fake_sinks.py
+## @brief 三类事件回调接口的 Fake 实现
+## @author 袁燕
 from __future__ import annotations
 
 from edge.interfaces.i_sinks import (

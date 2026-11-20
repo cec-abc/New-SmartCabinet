@@ -1,0 +1,88 @@
+{
+  "mode": "fake",
+  "leftCamera": "0",
+  "rightCamera": "1",
+  "workerId": 1,
+  "requestId": "req-lab-001",
+  "roiCsv": "D:\\CFDZ\\BYJSJ\\New-SmartCabinet\\edge\\config\\roi_binding.csv",
+  "modelPath": "",
+  "checks": [
+    {
+      "id": "C01",
+      "name": "ROI 对照表加载",
+      "passed": true,
+      "detail": "4 行"
+    },
+    {
+      "id": "C02",
+      "name": "单层 ROI 筛选",
+      "passed": true,
+      "detail": "worker_id=1, 1 行"
+    },
+    {
+      "id": "C03",
+      "name": "双摄取帧",
+      "passed": true,
+      "detail": "mode=fake, left=5545B, right=5530B"
+    },
+    {
+      "id": "C04",
+      "name": "拼接全景",
+      "passed": true,
+      "detail": "640x480"
+    },
+    {
+      "id": "C05",
+      "name": "ROI 裁剪",
+      "passed": true,
+      "detail": "1/1"
+    },
+    {
+      "id": "C06",
+      "name": "推理模式",
+      "passed": true,
+      "detail": "无模型，合法未命中"
+    },
+    {
+      "id": "C07",
+      "name": "items 形状",
+      "passed": true,
+      "detail": "1 项，每项 4 键"
+    },
+    {
+      "id": "C08",
+      "name": "recognize_ack 形状",
+      "passed": true,
+      "detail": "request_id=req-lab-001"
+    },
+    {
+      "id": "C09",
+      "name": "幂等比对",
+      "passed": true,
+      "detail": "2 次 ack 一致"
+    }
+  ],
+  "items": [
+    {
+      "position": "A-01-01",
+      "tool_id": "",
+      "confidence": 0.0,
+      "alert_type": "unknown"
+    }
+  ],
+  "ack": {
+    "type": "recognize_ack",
+    "request_id": "req-lab-001",
+    "items": [
+      {
+        "position": "A-01-01",
+        "tool_id": "",
+        "confidence": 0.0,
+        "alert_type": "unknown"
+      }
+    ]
+  },
+  "idempotent": true,
+  "artifacts": {},
+  "overallPassed": true
+}

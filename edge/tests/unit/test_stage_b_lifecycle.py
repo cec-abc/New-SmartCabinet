@@ -1,4 +1,7 @@
-"""阶段 b 补强单测：可打断等待、join 超时、重复 stop 幂等、BaseService 多态与异常边界。"""
+"""阶段 b 补强单测：可打断等待、join 超时、重复 stop 结果一致、BaseService 多态与异常边界。"""
+## @file edge/tests/unit/test_stage_b_lifecycle.py
+## @brief 阶段 b 补强单测：可打断等待、join 超时、重复 stop 结果一致、BaseService 多态与异常边界
+## @author 袁燕
 from __future__ import annotations
 
 import time
@@ -166,7 +169,7 @@ def testStopReturnsAfterJoinTimeout() -> None:
     assert worker.is_alive() is False
 
 
-# 对应验收项 b-3：重复 stop 幂等，重复 start 不抛异常
+# 对应验收项 b-3：重复 stop 结果一致，重复 start 不抛异常
 def testRepeatedStopIsIdempotent() -> None:
     entered = Event()
     rounds: list[int] = []

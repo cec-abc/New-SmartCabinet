@@ -1,4 +1,7 @@
 """线程接口 Fake 实现。"""
+## @file edge/tests/fakes/fake_thread.py
+## @brief 线程接口 Fake 实现
+## @author 袁燕
 from __future__ import annotations
 
 from edge.interfaces.i_thread import IThread
