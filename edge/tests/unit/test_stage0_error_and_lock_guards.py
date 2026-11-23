@@ -139,7 +139,7 @@ def testAcquireOrExitExitsImmediatelyWithConfigMessage() -> None:
     lock = ProcessFileLock(adapter, "edge_runtime.lock")
     with pytest.raises(SystemExit) as caught:
         lock.acquireOrExit()
-    expectedMessage = f"[CONFIG] {EdgeError(ErrorCode.CONFIG, '已有实例运行，进程锁获取失败')}"
+    expectedMessage = str(EdgeError(ErrorCode.CONFIG, '已有实例运行，进程锁获取失败'))
     assert type(caught.value.code) is str
     assert caught.value.code == expectedMessage
     assert adapter.lockCalls == ["edge_runtime.lock"]

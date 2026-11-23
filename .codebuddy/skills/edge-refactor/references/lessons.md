@@ -264,6 +264,62 @@
 - **上升为**：`decisions.md` 的 **D-20**（删除断链补报功能）；无新 always 规则。
 - **来源**：用户 2026-11-16 裁决（与测试沟通后确认）+ `references/decisions.md` D-20 + `STAGE-STATE.md` §7 变更记录。
 
+### L-28 ｜ 2026-11-23 ｜ 阶段 全模块整改（非编号阶段）
+
+- **触发**：对 `platform/adapter.py` 做代码检视，发现 WindowsAdapter.lockFile 每次 acquire 都 `open("a+b")` + 无条件 `write(b"\0")`（锁文件随重启无界增长）；两侧 `open`/`os.open` 在 try 外使内置 OSError 穿透模块边界；Linux 侧 `os.fdopen` 失败时 fd 泄漏；Windows typeshed 缺 fcntl 属性致 mypy strict 报 3 错。
+- **结论**：**跨平台文件锁三条硬做法**：①锁字节只在空文件时写一次（`os.fstat(fd).st_size == 0` 才 write），避免锁文件无界增长；②`open`/`os.open` 必须纳入 try，OSError 时关闭已打开句柄并返回 None，由上层 acquire 统一转 EdgeError，内置异常不跨界；③`os.fdopen` 成功后要把 fd 局部变量置 None，失败分支才 `os.close(fd)`，否则成功路径会重复关闭、失败路径会泄漏。平台专有标准库（fcntl/msvcrt）函数体内 import，Windows 下 fcntl 的调用行加 `# type: ignore[attr-defined]` 让 mypy strict 全绿，属既有 D-09「可选/平台依赖函数体内 import + ignore」口径。改 lockFile 前先查有没有 `inspect.getsource` 文本级断言（本例要求 `fcntl.flock` 恰好 1 次、`import fcntl` 存在、无 TODO/NotImplementedError），改后逐条复验。
+- **归属**：本轮已收敛；所有平台适配/文件锁改动沿用。
+- **上升为**：检视经验库（新增「文件锁无界增长 / 异常跨界 / fd 生命周期 / 平台库 mypy」四项检查点）；无新规则 / 无新裁决。
+- **来源**：用户 2026-11-23「对 adapter.py 进行代码检视并完善」指令 + 独立审核 Agent 读盘复核 + 实测 5 次 acquire 锁文件恒为 1 字节。
+
+### L-29 ｜ 2026-11-23 ｜ 阶段 全模块整改（非编号阶段）
+
+- **触发**：检视 `platform/file_lock.py`，发现 `acquire()` 无幂等守卫（重复调用会覆盖旧句柄致泄漏，而 `release()` 幂等，对称性缺失）；`release()` 的 `close()` 未加 try/finally（抛错则状态不置 None）；同时实测 `acquireOrExit` 的 `sys.exit(f"[{error.code.name}] {error}")` 因 `EdgeError.__str__` 已含前缀，输出双 `[CONFIG]`。
+- **结论**：**资源持有类的 acquire/release 必须成对幂等**：acquire 入口加 `if self.lockHandle is not None: return`，release 用 try/finally 保证引用一定置 None，两者都不改变正常路径行为、不破坏既有断言。修复被测试固化的"提示信息 bug"时，若断言在 `tests/unit`（非 L1 契约层）仍属"不得静默修改既有断言"，须先输出完整 diff（代码 + 测试断言双侧 + 影响面）等用户明确批准，未批前保持原样并在 handoff 登记，不能用"改测试迁就实现"或"改实现迁就测试"任一单边方式悄悄收敛。
+- **归属**：幂等、release 保护、双 `[CONFIG]` 前缀修复本轮全部收敛（双侧 diff 经用户明确批准后落地，35 passed + 真实双进程退出消息实测单前缀）。
+- **上升为**：检视经验库（新增「acquire/release 成对幂等」「被测试固化的提示 bug 需双侧 diff 批准」两项检查点）；无新规则 / 无新裁决。
+- **来源**：用户 2026-11-23「file_lock.py 代码检视并完善」指令 + 独立审核 Agent 读盘 + 实测 `repr` 确认双前缀。
+
+### L-30 ｜ 2026-11-23 ｜ 阶段 全模块整改（非编号阶段）
+
+- **触发**：检视 1471 行的 `app_init.py`（应用装配总入口），发现两处口径不一致：单层模式相机切片写死 `[:2]` 而同文件已有 `DUAL_CAMERA_PAIR_SIZE=2`；`require_roi_binding` 用裸 `bool()` 而同文件已有能识别 `"false"/"0"/"off"` 的 `flagEnabled`。同时列出多条需裁决项（配置强转异常跨界、Windows 专用 CAP_DSHOW、handleRecognizeReq 业务分支、sys.path 副作用等）。
+- **结论**：**同一份配置/常量在文件内已有"正确用法"时，散落的"临时写法"要收敛到那个单一来源**（`[:2]`→`[:DUAL_CAMERA_PAIR_SIZE]`、`bool()`→`flagEnabled()`），这类纯口径收敛零行为风险、可当轮直接做；而**触及行为/架构的项（异常转译口径、平台后端选择、业务逻辑归属、全局副作用）不因"检视发现"就当轮改**，列成待裁决清单交用户拍板，避免大文件一次改多处引入回归。大文件优化前必须先用两个 Agent 分别列"低风险收敛项"与"契约硬约束清单"（本例 AST 锁 buildSystem 无分支、禁 cast(、帧型字面量可扫描），改后逐条复验 + 全量 307 测试不回落。
+- **归属**：全部收敛（307 passed + 独立审核 7 项通过）——口径收敛（`[:DUAL_CAMERA_PAIR_SIZE]`、`flagEnabled`）；A4 日志改走 ILogger、A1 新增 `readInt/readFloat` 收敛配置强转为 EdgeError、A2 用 `getattr(CAP_DSHOW, None)` 兼容麒麟、A3 业务分发下沉到 `RecognitionCapability.routeCapture`（handleRecognizeReq 一行委托，无残留死代码）、B6 补异常注释；均经用户明确批准。
+- **上升为**：检视经验库（新增「同文件单一来源收敛」「大文件改动先列契约硬约束」两项检查点）；无新规则 / 无新裁决。
+- **来源**：用户 2026-11-23「app_init.py 优化并解读」指令 + 双 Agent 检视/梳理 + 独立审核读盘复核。
+
+### L-31 ｜ 2026-11-23 ｜ 阶段 全模块整改（非编号阶段）
+
+- **触发**：lab 工具 `host_comm_sim/simulator_gui.py` 界面永远停在"监听中/等待周期帧"，socket 层隔离实验证明收发正常、生产代码日志 247 条 TX periodic；PyCharm 控制台铁证 `Exception in Tkinter callback → _tick line 263 → _handleEvent line 271`。根因 `_handleStatus` 对 `tk.StringVar` 调 `.configure(foreground=...)`，而 StringVar 无 configure 方法（对照实验 `hasattr=False`），一收 STATUS 事件就抛异常，`_tick` 的 `self._root.after(...)` 排在 `_handleEvent` 之后永不执行 → 事件循环死掉。
+- **结论**：**GUI 事件循环里"定时续期 after"必须放 finally，且单个事件处理要 try/except 吞异常只记日志**——否则任何一处 UI API 误用都会让整个界面永久卡死，表象却像"通信不通"。**tkinter 变量（StringVar/IntVar）只管值、没有 configure；颜色/样式等外观 configure 必须作用于控件本身（Label/Button）**。排查"界面不更新"的优先级：①先看 IDE 控制台有无 Tkinter callback 异常栈（决定性证据）②socket 层隔离实验③网络拓扑；不要停在"网络/时序"猜测。修复后须 GUI 冒烟实测：逐一灌入各状态事件确认无崩溃、after 仍有回调排程，不能只靠静态检查。
+- **归属**：本轮已收敛（GUI 冒烟 3 状态事件无崩溃 + after 续期；ruff/mypy/307 测试全绿；独立审核 5 项通过）。
+- **上升为**：检视经验库（新增「GUI 事件循环 after 放 finally」「StringVar 无 configure」「界面卡死先看异常栈」三项检查点）；无新规则 / 无新裁决。
+- **来源**：用户 2026-11-23「还是没通信上、上位机模拟器报错」指令 + PyCharm 控制台异常栈截图 + 对照实验 + GUI 冒烟。
+
+### L-32 ｜ 2026-11-23 ｜ 阶段 全模块整改（非编号阶段）
+
+- **触发**：袁总拔掉两路 USB 摄像头后周期帧仍报 `ok`。深挖发现两层 bug：①`grabDeviceFrame` 异常白名单只捕获 `(OSError, ValueError, RuntimeError)`，拔线典型 `cv2.error`（Exception 子类）穿透 → 采集线程被杀 → 再无人取帧 → `_commOk` 保持 True；②`_commOk` 全文件无恢复为 True 的代码，一旦 offline 永不回 ok。
+- **结论**：**设备通信状态要做成"失败即标记 + 连续 N 帧成功才恢复"的完整状态机，且采集循环要能吞掉单路失败继续存活**——否则"线程死了状态还 ok"或"离线后永恢复不了"。落地四处：`usb_camera_device.py` 加 `COMM_RECOVERY_FRAMES=3` + `_commRecoveryCount` + `markCommFailed/markCommSuccess`，异常白名单放宽为 `except Exception`（EdgeError 先放行）；`usb_capture_worker.py` 的 `captureOnce` 对单路 `readFrame` 包 try/except EdgeError 只跳过该路（线程不死），`runLoop` 的 finally 用鸭子类型 `getattr(camera, "markCommFailed")` 标记本组失败（不扩 L1 接口）。**审核抓到的真 bug**：初版在 except 分支也调 `_countEmptyFrame()`，与循环末尾的调用重复导致每轮计数翻倍（30 轮阈值提前到 15 轮）——删掉分支内那次、统一由末尾按"轮"累加。教训：新增异常分支时要检查它与既有汇总逻辑是否重复计数/重复上报。
+- **归属**：本轮已收敛（专项验证 5 项 PASS：拔线 offline/抗抖动恢复/计数清零/worker 存活/退出标记；计数修复后专项 PASS；ruff/mypy/307 测试全绿；独立审核 + 读盘复核全通过）。
+- **上升为**：检视经验库（新增「通信状态失败恢复状态机」「异常分支与汇总逻辑重复计数」「鸭子类型不扩 L1 接口」三项检查点）；无新规则 / 无新裁决。
+- **来源**：用户 2026-11-23「拔 USB 状态不变，按推荐改并反复分析」指令 + 独立审核 Agent 读盘复核发现计数 bug + 5 项专项验证。
+
+### L-33 ｜ 2026-11-23 ｜ 阶段 全模块整改（非编号阶段）
+
+- **触发**：袁总"启动时没插摄像头、后来插上仍是 offline"。根因不是"没周期检查"，而是启动探测 open 失败 + 采集线程 `openCameras` 抛异常带死整组 → 线程死后再无人 open，`_everOpened` 永远 False；`beginScan` 见 `_capturing=True` 只换 requestId、不重建 worker。上一轮的"连续3帧恢复"只作用于 `_commOk`（取图路径），覆盖不到这里。
+- **结论**：**"设备启动不在位、中途插入"要有独立的重开路径**：采集线程 `openCameras` 改逐路 try/except（单路失败不带死同组其余路）、`_captureStream` 每轮开头调 `retryClosedCameras()` 对未就绪路按注入间隔节流重试 open、open 失败鸭子类型调 `markCommFailed`；重开间隔 `reopenIntervalSec` 与时钟 `nowSec` 都构造注入（默认 2s / monotonic），各路独立时间戳。同时 `captureOnce` 对 `getStatus()["opened"]==False` 的路直接跳过，不依赖各设备 `readFrame` 是否自检 opened——这让生产代码对契约不一致的测试桩也健壮（原测试桩 `readFrame` 不检查 opened，单路 open 失败时会误产帧导致一个集成用例失败，用生产代码跳过未就绪路修复，未改断言）。**已知限制（如实披露）**：重开成功后不补发定焦指令（`_focusDispatched` 一次性开关），auto 模式无影响，fixed 定焦模式下后插入相机图像可能不清晰，需单独做 onDeviceReopened 回调补发。
+- **归属**：本轮已收敛（专项5项PASS：启动不崩/节流/插入恢复/就绪不重开/未就绪跳过；307测试全绿；独立审核清单全通过+2隐患处置其一）。
+- **上升为**：检视经验库（新增"启动不在位需独立重开路径""重开间隔与时钟注入""未就绪路按状态跳过而非依赖设备自检"三项检查点）；无新规则 / 无新裁决。
+- **来源**：用户 2026-11-23 "A（方案A）"批准 + 独立审核 Agent 读盘复核发现2项隐患 + 5项专项验证。
+
+### L-34 ｜ 2026-11-23 ｜ 阶段 全模块整改（非编号阶段）
+
+- **触发**：袁总"默认插着、拔 USB 后周期帧仍报 ok"。根因：采集线程按需拉起（只在 recognize_req 时），没有识别任务时根本无人取帧，拔线感知不到；状态字段冻结在最后一次成功值。改方案 A（采集循环内节流重开）只解决"插入恢复"，不解决"空闲时拔出感知"。
+- **结论**：**"设备状态要实时反映硬件"必须有独立于采集的兜底探测**——新增 `CameraProbeThread`（继承 BaseThread），挂在 `UsbController` 内部、随 USB 生命周期启停（不改 STOP_ORDER、不碰契约测试）。性能三约束：①采集在跑时巡检跳过（零额外取帧）②错峰：一轮只探一路、默认 3 秒周期（8 路单路约 24 秒一次）③首轮延迟一个周期再探（启动不抢资源）。**独立审核抓到 3 个真 bug**：①巡检 stop 后永不重启（BaseThread 不可重启）→ 加 `_probeStopping` + `_ensureProbeRunning` 在 startCapture/beginScan 重建实例；②"判据+探测"分离有 TOCTOU 竞态，巡检飞行中采集启动会释放 worker 刚开的句柄 → 改为单一 `probeIfIdle` 回调在 `_captureLock` 内原子完成检查+探测；③`markCommSuccess` 双调（`readFrame` 内部+显式）使"连续3帧恢复"退化为 2 轮 → 去掉显式标记。另 stopCapture 持锁 join 巡检会死锁 → 锁内置标志、锁外 stop。
+- **归属**：本轮已收敛（307 测试全绿；专项 5 项 + 3bug 修复 4 项 PASS；独立两轮审核清单全通过；STOP_ORDER/测试断言/L1 接口零改动）。
+- **上升为**：检视经验库（新增「设备状态需独立兜底探测」「巡检错峰降开销」「线程 stop 后重建」「TOCTOU 判据+动作须同锁」「派生标记防双调」五项检查点）；无新规则 / 无新裁决。
+- **来源**：用户 2026-11-23 "做周期检查、独立线程、注意性能" 指令 + 独立审核 Agent 两轮读盘复核 + 9 项专项验证。
+
 ## 4. 配置期已登记（非经验，供开工索引）
 
 - 用户明确：**不得自动修改 L1 契约层，契约变更必须给 diff 并等批准**（已固化于规则 01/04、SKILL.md §6）。

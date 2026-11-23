@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from pathlib import Path
+from time import monotonic
 
 from edge.base.base_thread import BaseThread
 from edge.exceptions import EdgeError, ErrorCode
@@ -18,6 +19,8 @@ from edge.interfaces.i_logger import ILogger
 MODULE_NAME = "UsbCaptureWorker"
 ## @brief 默认采集间隔秒数，两轮取帧之间的等待时长
 DEFAULT_CAPTURE_INTERVAL_SEC: float = 0.1
+## @brief 默认重开间隔秒数，未就绪相机再次尝试打开的最短间隔
+DEFAULT_REOPEN_INTERVAL_SEC: float = 2.0
 ## @brief 等待定焦屏障时的轮询间隔秒数，短间隔保证定焦完成后能立刻取帧
 FOCUS_GATE_POLL_SEC: float = 0.01
 ## @brief 取图为空的日志间隔次数，累计到该倍数才记一条日志
@@ -62,6 +65,8 @@ class CaptureWorker(BaseThread):
     #  @param focusStableMs 定焦后镜头稳定等待毫秒数
     #  @param focusGate 首帧定焦屏障（注入）；返回 True 表示本组各路定焦指令已下发完毕。
     #         worker 在稳定等待与首帧之前先等它，避免先就绪的线程在别人尚未定焦时抓到糊帧
+    #  @param reopenIntervalSec 未就绪相机再次尝试打开的最短间隔秒数（构造注入）
+    #  @param nowSec 单调时钟秒提供器（注入，便于确定性举证节流间隔）
     #  @return 无
     def __init__(self, workerId: int, cameras: tuple[ICameraDevice, ...],
                  saveDir: str, logger: ILogger | None,
@@ -73,7 +78,9 @@ class CaptureWorker(BaseThread):
                  captureIntervalSec: float = DEFAULT_CAPTURE_INTERVAL_SEC,
                  onDevicesReady: DevicesReadyCallback | None = None,
                  focusStableMs: int = 0,
-                 focusGate: Callable[[], bool] | None = None) -> None:
+                 focusGate: Callable[[], bool] | None = None,
+                 reopenIntervalSec: float = DEFAULT_REOPEN_INTERVAL_SEC,
+                 nowSec: Callable[[], float] | None = None) -> None:
         super().__init__(name=f"UsbCaptureWorker-{workerId}", logger=logger)
         ## @brief 线程编号
         self._workerId: int = workerId
@@ -115,6 +122,12 @@ class CaptureWorker(BaseThread):
         self._focusStableMs: int = focusStableMs
         ## @brief 首帧定焦屏障，为空表示不等待（无对焦能力的场景）
         self._focusGate: Callable[[], bool] | None = focusGate
+        ## @brief 未就绪相机再次尝试打开的最短间隔秒数
+        self._reopenIntervalSec: float = reopenIntervalSec
+        ## @brief 单调时钟秒提供器，默认取系统单调时钟
+        self._nowSec: Callable[[], float] = nowSec if nowSec is not None else monotonic
+        ## @brief 各路上次尝试重开的时间戳，下标 = 相机在本组中的序号
+        self._lastReopenAt: list[float] = [0.0] * len(cameras)
 
     ## @brief 线程主流程：开本组相机、等定焦完成、等镜头稳定、循环取帧、关本组相机
     #  @return 无
@@ -136,7 +149,21 @@ class CaptureWorker(BaseThread):
             ## 内置异常跨线程边界前统一转业务异常
             self.reportError(EdgeError(ErrorCode.CAPTURE, f"采集异常: {error}"))
         finally:
+            self._markCamerasCommFailed()
             self._closeCameras()
+
+    ## @brief 线程退出时把本组相机标记为通信失败，避免线程已死状态还报 ok
+    #  @return 无
+    #  @note 用鸭子类型调用设备能力，Fake 设备未实现时跳过，不扩 L1 接口契约
+    def _markCamerasCommFailed(self) -> None:
+        for camera in self._cameras:
+            marker = getattr(camera, "markCommFailed", None)
+            if callable(marker):
+                try:
+                    marker()
+                except Exception:
+                    ## 单路标记失败不挡住其余路与后续句柄释放
+                    pass
 
     ## @brief 逐路关掉本组相机；某一路关闭报错不挡住其它路，句柄一个都不留在手上
     #  @return 无
@@ -155,15 +182,41 @@ class CaptureWorker(BaseThread):
         ## 关闭异常只记日志，不再上抛失败事件，避免收尾问题被当成一轮采集失败
         self._logError(EdgeError(ErrorCode.CAPTURE, f"关闭相机异常: {firstError}"))
 
-    ## @brief 打开本线程挂载的全部相机；开完就回报就绪，开失败也回报
+    ## @brief 打开本线程挂载的全部相机；单路失败只跳过该路，不阻断同组其余路
     #  @return 无
-    #  @raises EdgeError 任一路相机打开失败时抛出，code=CAPTURE
     def openCameras(self) -> None:
         try:
             for camera in self._cameras:
-                camera.open()
+                try:
+                    camera.open()
+                except EdgeError:
+                    ## 该路暂不可用，留到采集循环里按间隔重试；不能带死整组线程
+                    pass
         finally:
             self.reportDevicesReady()
+
+    ## @brief 对未就绪的路按间隔重试打开，让运行中接入的相机能自动恢复
+    #  @return 无
+    #  @note 用注入的单调时钟做节流，避免每轮取帧都触发驱动 open 造成日志刷屏
+    def retryClosedCameras(self) -> None:
+        now = self._nowSec()
+        for index, camera in enumerate(self._cameras):
+            if bool(camera.getStatus().get("opened", False)):
+                continue
+            if now - self._lastReopenAt[index] < self._reopenIntervalSec:
+                continue
+            self._lastReopenAt[index] = now
+            try:
+                camera.open()
+            except EdgeError:
+                ## 仍未接入或打开失败，标记该路不可用后等下个间隔再试，不影响其余路
+                marker = getattr(camera, "markCommFailed", None)
+                if callable(marker):
+                    try:
+                        marker()
+                    except Exception:
+                        ## 单路标记失败不影响其余路与本轮取帧
+                        pass
 
     ## @brief 回报本线程的相机就绪；上层据此在全部线程就绪后统一下发对焦
     #  @return 无
@@ -191,7 +244,16 @@ class CaptureWorker(BaseThread):
     def captureOnce(self) -> tuple[bytes, ...] | None:
         frames: list[FrameImage] = []
         for camera in self._cameras:
-            frame = camera.readFrame()
+            ## 未就绪的路直接跳过，不依赖各设备 readFrame 是否自检 opened；
+            ## 空帧计数统一由下方 len(frames) 判断按“轮”累加
+            if not bool(camera.getStatus().get("opened", False)):
+                continue
+            try:
+                frame = camera.readFrame()
+            except EdgeError:
+                ## 单路取帧失败只跳过该路，异常冒泡会杀死线程导致再也无人取帧；
+                ## 空帧计数统一由下方 len(frames) 判断按“轮”累加，避免此处重复计数翻倍
+                continue
             if frame is not None:
                 frames.append(frame)
         if len(frames) != len(self._cameras):
@@ -293,6 +355,7 @@ class CaptureWorker(BaseThread):
     #  @return 无
     def _captureStream(self) -> None:
         while not self.stopEvent.is_set():
+            self.retryClosedCameras()
             frames = self.captureOnce()
             if frames is not None:
                 self._publishFrames(frames)

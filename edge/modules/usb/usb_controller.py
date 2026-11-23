@@ -13,8 +13,13 @@ from edge.interfaces.i_camera_focus import ICameraFocus
 from edge.interfaces.i_frame_sink import IFrameSink
 from edge.interfaces.i_logger import ILogger
 from edge.interfaces.i_sinks import ICaptureSink
+from edge.modules.usb.usb_camera_probe_thread import (
+    DEFAULT_PROBE_INTERVAL_SEC,
+    CameraProbeThread,
+)
 from edge.modules.usb.usb_capture_worker import (
     DEFAULT_CAPTURE_INTERVAL_SEC,
+    DEFAULT_REOPEN_INTERVAL_SEC,
     CaptureWorker,
 )
 
@@ -54,6 +59,8 @@ class UsbController(BaseService):
     #  @param frameSink 帧流回调（注入，为空表示只落盘）
     #  @param cameraCount 相机路数（构造注入）
     #  @param captureIntervalSec 两轮取帧之间的等待秒数（构造注入）
+    #  @param reopenIntervalSec 未就绪相机再次尝试打开的最短间隔秒数（构造注入）
+    #  @param probeIntervalSec 摄像头巡检周期秒数（构造注入）
     #  @return 无
     def __init__(self, cameraPairs: Sequence[tuple[ICameraDevice, ...]],
                  saveDirs: list[str], sink: ICaptureSink, logger: ILogger | None,
@@ -66,7 +73,9 @@ class UsbController(BaseService):
                  focusStableMs: int = 0,
                  frameSink: IFrameSink | None = None,
                  cameraCount: int = DEFAULT_CAMERA_COUNT,
-                 captureIntervalSec: float = DEFAULT_CAPTURE_INTERVAL_SEC) -> None:
+                 captureIntervalSec: float = DEFAULT_CAPTURE_INTERVAL_SEC,
+                 reopenIntervalSec: float = DEFAULT_REOPEN_INTERVAL_SEC,
+                 probeIntervalSec: float = DEFAULT_PROBE_INTERVAL_SEC) -> None:
         ## @brief 设备组，单摄 1 路、双摄 2 路，也支持多路（任意长度元组）
         self._cameraPairs: Sequence[tuple[ICameraDevice, ...]] = cameraPairs
         ## @brief 按物理编号顺序排列：先各组第 1 路，再各组第 2 路、第 3 路…，保持整柜编号口径；
@@ -108,10 +117,14 @@ class UsbController(BaseService):
         self._cameraCount: int = cameraCount
         ## @brief 两轮取帧之间的等待秒数
         self._captureIntervalSec: float = captureIntervalSec
+        ## @brief 未就绪相机再次尝试打开的最短间隔秒数
+        self._reopenIntervalSec: float = reopenIntervalSec
         ## @brief 是否已初始化
         self._inited: bool = False
         ## @brief 是否正在采集
         self._capturing: bool = False
+        ## @brief 巡检是否正在停机；置位后巡检跳过探测，避免停机窗口误启动
+        self._probeStopping: bool = False
         ## @brief 并发启停锁
         self._captureLock: Lock = Lock()
         ## @brief 当前采集线程实例（每次拉起新建）
@@ -127,6 +140,14 @@ class UsbController(BaseService):
         ## @brief 逐路定焦完成事件，下标 = 物理路号 - 1；worker 取首帧前等本组两路都置位。
         #        定焦成功或失败都会置位（失败不阻塞采集），避免屏障永久等待
         self._focusDoneEvents: list[Event] = [Event() for _ in self._cameraDevices]
+        ## @brief 两轮巡检之间的等待秒数
+        self._probeIntervalSec: float = probeIntervalSec
+        ## @brief 巡检下一路的下标，逐路错峰
+        self._probeNextIndex: int = 0
+        ## @brief 摄像头巡检线程；探测与采集启停共用同一把锁，避免并发操作设备
+        self._probeThread: CameraProbeThread = CameraProbeThread(
+            len(self._cameraDevices), self._probeIfIdle, logger, probeIntervalSec,
+        )
 
     ## @brief 初始化：校验目录存在且可写、对焦模式合法，Fail-Fast 不引入能力降级
     #  @return 无
@@ -146,6 +167,8 @@ class UsbController(BaseService):
             raise EdgeError(ErrorCode.CONFIG, f"对焦模式非法: {self._focusMode}")
         self._inited = True
         self.probeCameraDevices()
+        ## 启动后巡检常驻，采集在跑时由线程自行跳过，空闲时兜底探测设备可用性
+        self._probeThread.start()
         if self._logger is not None:
             message = f"USB 初始化完成, 配置 {len(self._saveDirs)} 个 Worker"
             self._logger.info(MODULE_NAME, message)
@@ -169,6 +192,54 @@ class UsbController(BaseService):
                 self._closeProbedDevice(device, address)
         with self._focusLock:
             self._unreachableAddresses = unreachable
+
+    ## @brief 确保巡检线程处于可运行状态；停机后再次采集时重建实例（线程不可重启）
+    #  @return 无
+    #  @note 须在 _captureLock 内调用；新建实例后由调用方在锁外 start
+    def _ensureProbeRunning(self) -> None:
+        if not self._probeStopping:
+            return
+        self._probeStopping = False
+        self._probeNextIndex = 0
+        self._probeThread = CameraProbeThread(
+            len(self._cameraDevices), self._probeIfIdle, self._logger,
+            self._probeIntervalSec,
+        )
+
+    ## @brief 采集空闲时巡检一路；检查与探测在同一把锁内完成，避免与采集启停竞态
+    #  @return 无
+    #  @note 持 _captureLock 覆盖"检查 _capturing → 探测 → 关句柄"全过程：
+    #        采集启停也持同一把锁，巡检飞行中采集无法启动，不会释放 worker 刚开的句柄
+    def _probeIfIdle(self) -> None:
+        with self._captureLock:
+            if self._capturing or self._probeStopping or not self._cameraDevices:
+                return
+            index = self._probeNextIndex
+            self._probeNextIndex = (index + 1) % len(self._cameraDevices)
+            self._probeCamera(index)
+
+    ## @brief 巡检单路：打开、取一帧确认在位、随后关闭；失败按通信异常处理
+    #  @param index 物理路号减一
+    #  @return 无
+    def _probeCamera(self, index: int) -> None:
+        if index < 0 or index >= len(self._cameraDevices):
+            return
+        device = self._cameraDevices[index]
+        address = self._deviceAddress(index, device)
+        try:
+            device.open()
+            ## readFrame 内部已按成功帧更新通信状态，这里不再重复标记，避免计数虚增
+            device.readFrame()
+        except Exception as error:
+            marker = getattr(device, "markCommFailed", None)
+            if callable(marker):
+                marker()
+            if self._logger is not None:
+                self._logger.error(
+                    MODULE_NAME, f"相机巡检失败 索引 {address}: {error}",
+                )
+        finally:
+            self._closeProbedDevice(device, address)
 
     ## @brief 关掉探测用的设备；关闭失败只记日志，不把收尾问题当成探测失败
     #  @param device 摄像头设备
@@ -214,6 +285,8 @@ class UsbController(BaseService):
             self._workers = workers
             self._capturing = True
             self.resetFocusDispatch()
+            self._ensureProbeRunning()
+        self._probeThread.start()
         for worker in workers:
             worker.start()
         if self._logger is not None:
@@ -225,9 +298,13 @@ class UsbController(BaseService):
     #  @return 无
     def stopCapture(self) -> None:
         with self._captureLock:
+            ## 先在锁内置停机标志与采集标志：巡检下次检查即跳过；
+            #  不能在持锁时 join 巡检，否则巡检等锁会死锁
+            self._probeStopping = True
             workers = list(self._workers)
             self._workers = []
             self._capturing = False
+        self._probeThread.stop()
         for worker in workers:
             worker.stop()
 
@@ -246,6 +323,7 @@ class UsbController(BaseService):
                 self._workers = workers
                 self._capturing = True
                 self.resetFocusDispatch()
+                self._ensureProbeRunning()
             else:
                 ## 已在采集：给在跑的采集线程换请求标识，下一轮帧就归属新请求
                 for worker in self._workers:
@@ -256,6 +334,7 @@ class UsbController(BaseService):
                 message = f"采集已在运行, 切换到请求 {requestId}"
                 self._logger.info(MODULE_NAME, message)
             return True
+        self._probeThread.start()
         for worker in workers:
             worker.start()
         if self._logger is not None:
@@ -399,6 +478,7 @@ class UsbController(BaseService):
                 requestId, self._frameSink, self._captureIntervalSec,
                 self.onWorkerDevicesReady, focusStableMs=self._focusStableMs,
                 focusGate=self.waitGroupFocusApplied(workerId),
+                reopenIntervalSec=self._reopenIntervalSec,
             ))
         return workers
 

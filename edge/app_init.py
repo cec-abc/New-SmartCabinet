@@ -268,11 +268,16 @@ class RecognitionCapability:
     def bindEmptyAckEmitter(self, emitter: Callable[[str], None]) -> None:
         self._emptyAckEmitter = emitter
 
-    ## @brief 立即回一帧结构合法的空清单应答
-    #  @param requestId 请求标识
+    ## @brief 按识别可用性决定请求出口：不可用回空清单，可用则触发采集
+    #  @param requestId 上位机请求标识
+    #  @param trigger 采集触发句柄（注入）
     #  @return 无
-    def emitEmptyAck(self, requestId: str) -> None:
-        self._emptyAckEmitter(requestId)
+    def routeCapture(self, requestId: str, trigger: CaptureTrigger) -> None:
+        if not self._available:
+            ## 识别能力不可用时立刻回空清单，让上位机马上看到结果而非干等重发超时
+            self._emptyAckEmitter(requestId)
+            return
+        trigger.triggerCapture(requestId)
 
 
 ## @brief 全部构造注入参数集合；app_init 不读全局状态、不做业务判断
@@ -384,21 +389,22 @@ def initializeModules(usb: UsbController, recognition: RecognitionController,
                       logStarter: Callable[[], None], logger: ILogger) -> None:
     logStarter()
     usb.init()
-    reportCameraProbeSummary(usb)
+    reportCameraProbeSummary(usb, logger)
     recognition.init()
 
 
 ## @brief 打印一行相机探测摘要；现场没接相机时给一句明白话，不再刷图像处理库的原生警告
 #  @param usb 采集门面
+#  @param logger 日志器，摘要与采集失败信息写入滚动日志
 #  @return 无
-def reportCameraProbeSummary(usb: UsbController) -> None:
+def reportCameraProbeSummary(usb: UsbController, logger: ILogger) -> None:
     addresses = usb.getUnreachableAddresses()
     if not addresses:
         return
     indexes = "、".join(addresses)
-    sys.stderr.write(
-        f"[边缘机] 相机打开失败：索引 {indexes}；"
-        "本机没接相机属正常现象，周期帧照发，详细原因见 logs/ 下的日志文件\n"
+    logger.info(
+        "app_init",
+        f"相机打开失败：索引 {indexes}；本机没接相机属正常现象，周期帧照发",
     )
 
 
@@ -446,6 +452,41 @@ def flagEnabled(value: object) -> bool:
     if isinstance(value, bool):
         return value
     return str(value).strip().lower() not in ("false", "0", "off", "no", "")
+
+
+## @brief 读取整型配置；非法值转业务异常，避免内置异常穿越装配边界
+#  @param config 配置读取门面
+#  @param section 配置节名
+#  @param key 配置键名
+#  @param default 缺失时的默认值
+#  @return 整型配置值
+#  @raises EdgeError 值无法转成整数时抛出，code=CONFIG
+def readInt(config: IConfig, section: str, key: str, default: int | None = None) -> int:
+    value = config.get(section, key, default=default)
+    try:
+        return int(value)
+    except (TypeError, ValueError) as error:
+        raise EdgeError(
+            ErrorCode.CONFIG, f"配置项 {section}.{key} 应为整数，实际为 {value!r}",
+        ) from error
+
+
+## @brief 读取浮点配置；非法值转业务异常，避免内置异常穿越装配边界
+#  @param config 配置读取门面
+#  @param section 配置节名
+#  @param key 配置键名
+#  @param default 缺失时的默认值
+#  @return 浮点配置值
+#  @raises EdgeError 值无法转成浮点数时抛出，code=CONFIG
+def readFloat(config: IConfig, section: str, key: str,
+              default: float | None = None) -> float:
+    value = config.get(section, key, default=default)
+    try:
+        return float(value)
+    except (TypeError, ValueError) as error:
+        raise EdgeError(
+            ErrorCode.CONFIG, f"配置项 {section}.{key} 应为数值，实际为 {value!r}",
+        ) from error
 
 
 ## @brief 探测采集门面构造函数是否接受指定参数
@@ -616,12 +657,7 @@ def buildPeriodicFrame(
 def handleRecognizeReq(signal: DecodedSignal, trigger: CaptureTrigger,
                        capability: RecognitionCapability) -> None:
     requestId = str(signal.get(WIRE_REQUEST_ID_KEY, ""))
-    if not capability.isAvailable():
-        ## 识别能力不可用时立刻回一帧结构合法的空清单，
-        ## 让上位机马上看到清单为空，而不是干等重发超时
-        capability.emitEmptyAck(requestId)
-        return
-    trigger.triggerCapture(requestId)
+    capability.routeCapture(requestId, trigger)
 
 
 ## @brief 构造注入的信号键到处理器映射；识别请求走采集触发句柄
@@ -834,7 +870,13 @@ def probeCameraReachability(deviceAddr: str) -> bool:
         return False
     ## 打开相机这一小段压掉图像处理库的原生日志，现场没接相机时不再刷误导性的警告
     with quietImageLibraryLog():
-        capture = imageLibrary.VideoCapture(index, imageLibrary.CAP_DSHOW)
+        ## Windows 用 DirectShow 后端按索引寻址；麒麟等平台没有该常量时用默认后端
+        dshowBackend = getattr(imageLibrary, "CAP_DSHOW", None)
+        capture = (
+            imageLibrary.VideoCapture(index, dshowBackend)
+            if dshowBackend is not None
+            else imageLibrary.VideoCapture(index)
+        )
         try:
             if not capture.isOpened():
                 return False
@@ -1082,6 +1124,7 @@ def detachEdgeModuleDirFromSearchPath() -> None:
         try:
             resolved = target.resolve()
         except OSError:
+            ## 路径无法解析时退回原路径比较，保持与 EDGE_MODULE_DIR 的判定可用
             resolved = target
         if resolved == EDGE_MODULE_DIR:
             continue
@@ -1261,7 +1304,7 @@ def readCaptureLayout(config: IConfig) -> CaptureLayout:
     if layerMode == LAYER_MODE_SINGLE:
         ## 工装单层测试：只取前 2 路相机，强制构成 1 个双摄 worker
         ## 其余链路（周期帧 / 识别 / 聚合）一字不动
-        cameraIndices = cameraIndices[:2]
+        cameraIndices = cameraIndices[:DUAL_CAMERA_PAIR_SIZE]
     captureMode = str(config.get(
         "usb", CAPTURE_MODE_KEY, default=CAPTURE_MODE_AUTO,
     ))
@@ -1299,18 +1342,18 @@ def buildInfrastructure(config: IConfig, layout: CaptureLayout) -> Infrastructur
     ensureRuntimeDirs(layout.logDir, layout.captureDirs, layout.recognitionDirs)
     logManager = LogManager.instance(
         layout.logDir,
-        int(config.get("log", "max_file_size")),
-        int(config.get("log", "mode")),
-        float(config.get("log", "disk_free_threshold")),
-        float(config.get("log", "queue_poll_sec")),
+        readInt(config, "log", "max_file_size"),
+        readInt(config, "log", "mode"),
+        readFloat(config, "log", "disk_free_threshold"),
+        readFloat(config, "log", "queue_poll_sec"),
     )
     socket: ISocket = TcpSocket(
         str(config.get("tcp", "host")),
-        int(config.get("tcp", "port")),
-        float(config.get("tcp", "connect_timeout_sec")),
-        float(config.get("tcp", "recv_timeout_sec")),
+        readInt(config, "tcp", "port"),
+        readFloat(config, "tcp", "connect_timeout_sec"),
+        readFloat(config, "tcp", "recv_timeout_sec"),
     )
-    maxFrameSize = int(config.get("tcp", "max_frame_size"))
+    maxFrameSize = readInt(config, "tcp", "max_frame_size")
     return Infrastructure(logManager=logManager, socket=socket, maxFrameSize=maxFrameSize)
 
 
@@ -1331,13 +1374,13 @@ def buildRecognitionInputs(config: IConfig, layout: CaptureLayout,
     startedAt = monotonic()
     roiBindingCsv = str(config.get("recognition", "roi_binding_csv"))
     roiBindingPath = resolveConfigPath(roiBindingCsv)
-    confidenceThreshold = float(config.get(
-        "recognition", "min_confidence", default=DEFAULT_CONFIDENCE,
-    ))
+    confidenceThreshold = readFloat(
+        config, "recognition", "min_confidence", default=DEFAULT_CONFIDENCE,
+    )
     loader = RoiBindingLoader(
         infra.logManager, confidenceThreshold=confidenceThreshold,
     )
-    requireRoiBinding = bool(config.get(
+    requireRoiBinding = flagEnabled(config.get(
         "recognition", "require_roi_binding", default=False,
     ))
     if requireRoiBinding:
@@ -1357,9 +1400,9 @@ def buildRecognitionInputs(config: IConfig, layout: CaptureLayout,
     inferenceBackend = str(config.get(
         "recognition", "inference_backend", default=DEFAULT_INFERENCE_BACKEND,
     ))
-    nmsIouThreshold = float(config.get(
-        "recognition", "nms_iou_threshold", default=DEFAULT_NMS_IOU_THRESHOLD,
-    ))
+    nmsIouThreshold = readFloat(
+        config, "recognition", "nms_iou_threshold", default=DEFAULT_NMS_IOU_THRESHOLD,
+    )
     return RecognitionInputs(
         cameraDevices=cameraDevices,
         cameraPairs=cameraPairs,
@@ -1396,17 +1439,17 @@ def assembleParts(config: IConfig, layout: CaptureLayout,
         modelPath=resolveConfigPath(str(config.get("recognition", "model_path"))),
         frameLoader=placeholderFrames,
         timeoutRunner=directInference,
-        inferTimeoutSec=float(config.get("recognition", "infer_timeout_sec")),
+        inferTimeoutSec=readFloat(config, "recognition", "infer_timeout_sec"),
         roiConfig=EMPTY_ROI_CONFIG,
         classItemMap=EMPTY_CLASS_ITEM_MAP,
         roiBindMap=EMPTY_ROI_BIND_MAP,
-        rollThreshold=float(config.get("usb", "roll_threshold")),
+        rollThreshold=readFloat(config, "usb", "roll_threshold"),
         usageRatio=zeroUsage,
         clock=defaultStamp,
         confidenceThreshold=inputs.confidenceThreshold,
         backoffSeq=normalizeBackoffSeq(config.get("tcp", "backoff_seq")),
         maxFrameSize=infra.maxFrameSize,
-        heartIntervalSec=float(config.get("tcp", "heart_interval_sec")),
+        heartIntervalSec=readFloat(config, "tcp", "heart_interval_sec"),
         buildHeartbeat=buildPeriodicFrame(
             inputs.cameraStatus.readStatus, inputs.startedAt, SOFTWARE_VERSION,
         ),
@@ -1425,7 +1468,7 @@ def assembleParts(config: IConfig, layout: CaptureLayout,
         zoomPositions=normalizeOpticalValues(
             config.get("usb", ZOOM_POSITIONS_KEY, default=0.0), ZOOM_POSITIONS_KEY,
         ),
-        focusStableMs=int(config.get("usb", FOCUS_STABLE_MS_KEY, default=200)),
+        focusStableMs=readInt(config, "usb", FOCUS_STABLE_MS_KEY, default=200),
         roiBindingCsv=inputs.roiBindingCsv,
         roiBindingRows=inputs.roiBindingRows,
         classItemComboMap=inputs.classItemComboMap,
@@ -1433,10 +1476,10 @@ def assembleParts(config: IConfig, layout: CaptureLayout,
         captureTrigger=inputs.captureTrigger,
         cameraStatus=inputs.cameraStatus,
         recognitionCapability=inputs.recognitionCapability,
-        aggregationTimeoutSec=float(config.get(
-            "recognition", "aggregation_timeout_sec",
+        aggregationTimeoutSec=readFloat(
+            config, "recognition", "aggregation_timeout_sec",
             default=DEFAULT_AGGREGATION_TIMEOUT_SEC,
-        )),
+        ),
         captureMode=layout.captureMode,
         resolvedCaptureMode=layout.resolvedMode,
         frameSource=layout.frameSource,

@@ -49,6 +49,8 @@ REAL_CAPTURE_ATTEMPTS: int = 3
 REAL_CAPTURE_RETRY_SEC: float = 0.05
 ## @brief 真实抓帧重试共用的等待对象；只做短超时等待，不置位，也不参与线程停机
 RETRY_WAIT_EVENT: Event = Event()
+## @brief 连续成功取帧达到该次数才把通信状态恢复为正常，避免单帧抖动误报恢复
+COMM_RECOVERY_FRAMES: int = 3
 
 ## @brief 帧读取回调，真实采集后端由上层注入，本模块不引入硬件依赖
 FrameReader = Callable[[], "FrameImage | None"]
@@ -132,6 +134,8 @@ class CameraDevice(ICameraDevice, ICameraFocus):
         self._everOpened: bool = False
         ## @brief 通信是否正常，取图失败后置否
         self._commOk: bool = True
+        ## @brief 连续成功取帧计数，达到阈值才恢复通信正常
+        self._commRecoveryCount: int = 0
         ## @brief 是否成功取到过图像
         self._everCaptured: bool = False
         ## @brief 当前设备绝对焦点位置
@@ -206,17 +210,18 @@ class CameraDevice(ICameraDevice, ICameraFocus):
             frame = self._frameReader()
         except EdgeError:
             ## 帧读取器已经报了业务异常，同样把该路记成通信异常，状态里不许报正常
-            self._commOk = False
+            self.markCommFailed()
             raise
         except Exception as error:
             ## 帧读取器抛出的任何内置异常都在模块内转业务异常，并置通信异常
-            self._commOk = False
+            self.markCommFailed()
             raise EdgeError(ErrorCode.CAPTURE, f"取图失败: {self._deviceAddr}: {error}") from error
         if frame is None:
             ## 取不到图像说明这路已经不出图，按通信异常处理，不许继续报正常
-            self._commOk = False
+            self.markCommFailed()
             return None
         self._everCaptured = True
+        self.markCommSuccess()
         return frame
 
     ## @brief 真实抓一帧并编码成 JPEG 字节；抓不到就明确报错，不静默返回空
@@ -237,19 +242,22 @@ class CameraDevice(ICameraDevice, ICameraFocus):
                 ## 首帧可能因设备刚起流而失败，短等一下再试；复用等待对象，不每帧新建
                 RETRY_WAIT_EVENT.wait(REAL_CAPTURE_RETRY_SEC)
             if frame is None:
-                self._commOk = False
+                self.markCommFailed()
                 raise EdgeError(ErrorCode.CAPTURE, f"取图失败: {self._deviceAddr}")
             encodedOk, encoded = imageLibrary.imencode(JPEG_EXTENSION, frame)
         except EdgeError:
             raise
-        except (OSError, ValueError, RuntimeError) as error:
-            ## 图像处理库抛出的内置异常不跨模块边界，统一转业务异常
-            self._commOk = False
-            raise EdgeError(ErrorCode.CAPTURE, f"取图失败: {self._deviceAddr}: {error}") from error
+        except Exception as error:
+            ## 图像库异常都按通信失败处理并转业务异常；cv2.error 拔线典型异常在此兜底
+            self.markCommFailed()
+            raise EdgeError(
+                ErrorCode.CAPTURE, f"取图失败: {self._deviceAddr}: {error}",
+            ) from error
         if not encodedOk:
-            self._commOk = False
+            self.markCommFailed()
             raise EdgeError(ErrorCode.CAPTURE, f"帧编码失败: {self._deviceAddr}")
         self._everCaptured = True
+        self.markCommSuccess()
         return bytes(encoded.tobytes())
 
     ## @brief 释放真实采集句柄，重复调用安全
@@ -264,6 +272,19 @@ class CameraDevice(ICameraDevice, ICameraFocus):
     def close(self) -> None:
         self.releaseDeviceCapture()
         self._opened = False
+
+    ## @brief 标记本路通信失败：状态立即转离线，连续成功计数清零
+    #  @return 无
+    def markCommFailed(self) -> None:
+        self._commOk = False
+        self._commRecoveryCount = 0
+
+    ## @brief 记录一次成功取帧：连续达标后才恢复通信正常，避免单帧抖动误判恢复
+    #  @return 无
+    def markCommSuccess(self) -> None:
+        self._commRecoveryCount += 1
+        if self._commRecoveryCount >= COMM_RECOVERY_FRAMES:
+            self._commOk = True
 
     ## @brief 返回状态快照
     #  @return 状态字典
