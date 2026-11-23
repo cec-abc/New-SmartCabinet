@@ -1,6 +1,6 @@
 """进程单文件锁：防止双开与端口占用，平台差异由注入的适配器提供。"""
 ## @file edge/platform/file_lock.py
-## @brief 进程单文件锁：main.py 启动先拿锁，占用或未实现转配置错，句柄随对象持有
+## @brief 进程单文件锁：main.py 启动先拿锁，占用或平台不支持转配置错，句柄随对象持有
 ## @author 袁燕
 from __future__ import annotations
 
@@ -27,14 +27,16 @@ class ProcessFileLock:
         ## @brief 锁文件句柄；None 表示当前未持锁
         self.lockHandle: BinaryIO | None = None
 
-    ## @brief 获取锁；失败抛业务异常
+    ## @brief 获取锁；失败抛业务异常，已持锁时重复调用安全
     #  @return 无
-    #  @raises EdgeError 锁被占用或平台骨架未实现时抛出
+    #  @raises EdgeError 锁被占用或平台适配器不支持文件锁时抛出
     def acquire(self) -> None:
+        if self.lockHandle is not None:
+            return
         try:
             lockHandle = self.adapter.lockFile(self.lockFilePath)
         except NotImplementedError as error:
-            ## Linux 骨架抛出的内置异常不跨模块边界，统一转成业务异常
+            ## 平台适配器抛出的内置异常不跨模块边界，统一转成业务异常
             raise EdgeError(ErrorCode.CONFIG, "平台文件锁尚未实现") from error
         if lockHandle is None:
             raise EdgeError(ErrorCode.CONFIG, "已有实例运行，进程锁获取失败")
@@ -42,15 +44,20 @@ class ProcessFileLock:
 
     ## @brief 获取锁；失败立即退出进程，供 main.py 第一件事调用
     #  @return 无
+    #  @raises SystemExit 取锁失败时由 sys.exit 终止进程
     def acquireOrExit(self) -> None:
         try:
             self.acquire()
         except EdgeError as error:
-            sys.exit(f"[{error.code.name}] {error}")
+            ## error 的字符串已带 [CODE] 前缀，直接输出避免重复
+            sys.exit(str(error))
 
     ## @brief 释放锁；重复调用安全
     #  @return 无
     def release(self) -> None:
         if self.lockHandle is not None:
-            self.lockHandle.close()
-            self.lockHandle = None
+            try:
+                self.lockHandle.close()
+            finally:
+                ## 无论关闭是否抛错都清空引用，保证重复调用安全
+                self.lockHandle = None
