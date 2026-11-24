@@ -1,15 +1,20 @@
 """应用装配：只做 new + 注入 + 返回，不写业务流程。"""
 from __future__ import annotations
 
+import atexit
 import inspect
+import math
+import shutil
 import struct
 import sys
 import zlib
 from collections.abc import Callable, Sequence
+from concurrent.futures import Future, ThreadPoolExecutor
+from concurrent.futures import TimeoutError as FutureTimeoutError
 from dataclasses import dataclass, field, replace
 from functools import partial
 from pathlib import Path
-from threading import Event, Lock
+from threading import BoundedSemaphore, Event, Lock
 from time import monotonic
 from typing import Any
 
@@ -377,6 +382,8 @@ class AssemblyParts:
     frameSource: str = FRAME_SOURCE_PLACEHOLDER
     ## @brief 置信度门槛单一来源值，装配期读配置后注入识别门面
     confidenceThreshold: float = DEFAULT_CONFIDENCE
+    ## @brief 缺框检测项是否拒识；生产装配为真，测试构造默认假
+    requireBox: bool = False
 
 
 ## @brief 系统初始化：只初始化模块，不启采集/识别线程
@@ -426,7 +433,12 @@ def buildFrameSender(comm: TcpComm) -> FrameSender:
     #  @return 发送结果
     def sendFrame(frame: CachedEvent) -> bool:
         with sendLock:
-            return comm.send(comm.encodeFrame(frame))
+            try:
+                return comm.send(comm.encodeFrame(frame))
+            except Exception:
+                ## 组帧/发送异常不能穿透到排空线程顶层，否则该线程死亡后再无人发应答；
+                ## 返回 False 交给链路断开逻辑处理
+                return False
 
     return sendFrame
 
@@ -482,11 +494,17 @@ def readFloat(config: IConfig, section: str, key: str,
               default: float | None = None) -> float:
     value = config.get(section, key, default=default)
     try:
-        return float(value)
+        result = float(value)
     except (TypeError, ValueError) as error:
         raise EdgeError(
             ErrorCode.CONFIG, f"配置项 {section}.{key} 应为数值，实际为 {value!r}",
         ) from error
+    if not math.isfinite(result):
+        ## nan/inf 会让阈值比较失效或产出非法 JSON，按配置错误阻断启动
+        raise EdgeError(
+            ErrorCode.CONFIG, f"配置项 {section}.{key} 必须是有限数值，实际为 {value!r}",
+        )
+    return result
 
 
 ## @brief 探测采集门面构造函数是否接受指定参数
@@ -704,6 +722,7 @@ def buildSystem(parts: AssemblyParts) -> EdgeControl:
         capabilityAvailable=parts.recognitionCapability.isAvailable(),
         confidenceThreshold=parts.confidenceThreshold,
         rollThreshold=parts.rollThreshold, usageRatio=parts.usageRatio,
+        requireBox=parts.requireBox,
     )
     tcp = TcpControlLayer(
         parts.socket, parts.logger, parts.backoffSeq, parts.maxFrameSize,
@@ -781,20 +800,118 @@ def placeholderFrames(saveDir: str, workerId: int) -> tuple[FrameImage, FrameIma
     return (b"", b"")
 
 
-## @brief 推理执行占位提供器；直接执行推理闭包，不额外施加超时
+## @brief 推理执行线程池最大并发数；按采集 worker 数量级设定，避免慢推理无限堆积
+INFERENCE_POOL_MAX_WORKERS: int = 4
+## @brief 推理执行线程池；模块级复用，超时后后台推理继续跑完但不再占用调用方
+_INFERENCE_POOL: ThreadPoolExecutor | None = None
+## @brief 线程池访问锁，保证首次调用时只建一个池
+_INFERENCE_POOL_LOCK: Lock = Lock()
+## @brief 推理在途闸门；容量为池大小，防止高频超时下无界排队积压
+_INFERENCE_GATE: BoundedSemaphore | None = None
+
+
+## @brief 取推理执行线程池与在途闸门，首次调用时创建并登记进程退出清理
+#  @return 线程池与闸门的二元组
+def inferencePool() -> tuple[ThreadPoolExecutor, BoundedSemaphore]:
+    global _INFERENCE_POOL, _INFERENCE_GATE
+    pool = _INFERENCE_POOL
+    gate = _INFERENCE_GATE
+    if pool is None or gate is None:
+        with _INFERENCE_POOL_LOCK:
+            pool = _INFERENCE_POOL
+            gate = _INFERENCE_GATE
+            if pool is None or gate is None:
+                pool = ThreadPoolExecutor(
+                    max_workers=INFERENCE_POOL_MAX_WORKERS,
+                    thread_name_prefix="InferenceTimeout",
+                )
+                ## 闸门容量与池大小一致：在途推理达上限时拒绝新提交，杜绝无界排队
+                gate = BoundedSemaphore(INFERENCE_POOL_MAX_WORKERS)
+                ## 进程退出时不等待在途推理，避免慢推理拖住停机
+                atexit.register(pool.shutdown, wait=False, cancel_futures=True)
+                _INFERENCE_POOL = pool
+                _INFERENCE_GATE = gate
+    return pool, gate
+
+
+## @brief 在超时上限内执行推理闭包；超时或并发已满抛 TimeoutError 由识别层转业务异常
 #  @param task 推理闭包
-#  @param timeoutSec 超时秒数
+#  @param timeoutSec 超时秒数，不大于 0 时直接执行不做限时
 #  @return 检测结果列表
+#  @raises TimeoutError 推理超时或在途推理已达上限
 def directInference(task: Callable[[], list[DetectionItem]],
                     timeoutSec: float) -> list[DetectionItem]:
-    # TODO: 接入真实超时计时器后，这里改为在超时上限内执行推理闭包
-    return task()
+    if timeoutSec <= 0:
+        return task()
+    pool, gate = inferencePool()
+    if not gate.acquire(blocking=False):
+        ## 在途已满时快速失败，不排队、不积压；调用方按超时降级处理
+        raise TimeoutError("在途推理已达上限")
+    future: Future[list[DetectionItem]] | None = None
+
+    ## @brief 任务结束（完成/异常/取消）时归还闸门名额
+    #  @param finished 已结束的任务
+    #  @return 无
+    def releaseGate(finished: Future[list[DetectionItem]]) -> None:
+        gate.release()
+
+    try:
+        future = pool.submit(task)
+        future.add_done_callback(releaseGate)
+        return future.result(timeout=timeoutSec)
+    except FutureTimeoutError as error:
+        ## 超时后取消尚未开始排队的任务；已在执行的推理无法强停，交由线程池收尾
+        if future is not None:
+            future.cancel()
+        raise TimeoutError(f"推理超过 {timeoutSec}s") from error
+    except BaseException:
+        ## 提交或执行期间的非超时异常也要归还名额，避免闸门泄漏
+        if future is None:
+            gate.release()
+        raise
 
 
-## @brief 磁盘占用比例占位提供器；返回 0.0 表示不做滚动删旧
+## @brief 磁盘占用比例占位提供器；返回 0.0 表示不做滚动删旧，供测试用
 #  @return 0.0
 def zeroUsage() -> float:
     return 0.0
+
+
+## @brief 磁盘占用缓存有效期秒；滚动删除每轮多次读取，节流避免高频系统调用
+DISK_USAGE_CACHE_TTL_SEC: float = 5.0
+
+
+## @brief 真实磁盘占用比例提供器；按各保存目录所在磁盘的已用比例取最大值
+#  @param dirs 保存目录列表，取其中所在磁盘的最高占用比例
+#  @param cacheTtlSec 缓存有效期秒，期内复用上次的占用比例
+#  @return 0.0~1.0 的已用比例；目录不可用时按 0.0 处理，不阻断业务
+def diskUsageRatio(dirs: Sequence[str],
+                   cacheTtlSec: float = DISK_USAGE_CACHE_TTL_SEC) -> Callable[[], float]:
+    cachedRatio: float = 0.0
+    cachedAt: float = -cacheTtlSec
+
+    def readUsage() -> float:
+        nonlocal cachedRatio, cachedAt
+        now = monotonic()
+        if now - cachedAt < cacheTtlSec:
+            ## 缓存有效期内直接返回，避免每轮采集对多目录重复系统调用
+            return cachedRatio
+        ratios: list[float] = []
+        for directory in dirs:
+            path = Path(directory)
+            root = path if path.is_dir() else path.parent
+            try:
+                usage = shutil.disk_usage(str(root))
+            except OSError:
+                ## 目录或磁盘暂时不可读时跳过，本轮不做滚动删除，不中断采集
+                continue
+            if usage.total > 0:
+                ratios.append(usage.used / usage.total)
+        cachedRatio = max(ratios, default=0.0)
+        cachedAt = now
+        return cachedRatio
+
+    return readUsage
 
 
 ## @brief 落盘文件名序号的补零位数
@@ -1444,9 +1561,11 @@ def assembleParts(config: IConfig, layout: CaptureLayout,
         classItemMap=EMPTY_CLASS_ITEM_MAP,
         roiBindMap=EMPTY_ROI_BIND_MAP,
         rollThreshold=readFloat(config, "usb", "roll_threshold"),
-        usageRatio=zeroUsage,
+        usageRatio=diskUsageRatio(layout.captureDirs + layout.recognitionDirs),
         clock=defaultStamp,
         confidenceThreshold=inputs.confidenceThreshold,
+        ## 生产口径：检测结果须带位置框，缺框按未识别
+        requireBox=True,
         backoffSeq=normalizeBackoffSeq(config.get("tcp", "backoff_seq")),
         maxFrameSize=infra.maxFrameSize,
         heartIntervalSec=readFloat(config, "tcp", "heart_interval_sec"),
@@ -1497,6 +1616,9 @@ def defaultParts(configPath: str = DEFAULT_CONFIG_PATH) -> AssemblyParts:
     config: IConfig = IniConfigManager.instance(resolvedConfigPath)
     layout = readCaptureLayout(config)
     infra = buildInfrastructure(config, layout)
+    if isinstance(config, IniConfigManager):
+        ## 日志器在 buildInfrastructure 才创建，此刻注入以补记此前所有默认值提示
+        config.setLogger(infra.logManager)
     inputs = buildRecognitionInputs(config, layout, infra)
     return assembleParts(config, layout, infra, inputs)
 

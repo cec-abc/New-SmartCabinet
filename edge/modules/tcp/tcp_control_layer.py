@@ -60,6 +60,8 @@ class TcpControlLayer(BaseService, SignalSink):
         self._upstreamSink = upstreamSink
         ## @brief 链路状态，仅经 transitionTo 写入
         self._linkState: str = LINK_DOWN
+        ## @brief 停机标志；置位后拒绝再迁移到 UP，防止停机与重连成功回调竞态
+        self._stopping: bool = False
         ## @brief 状态锁
         self._stateLock: Lock = Lock()
         ## @brief 当前重连线程（每次拉起新建实例，绕开 BaseThread.start 同一实例只启动一次的限制）
@@ -80,6 +82,9 @@ class TcpControlLayer(BaseService, SignalSink):
     ## @brief 启动：新建并重连线程（D-02 非 UP 不启其他线程）
     #  @return 无
     def start(self) -> None:
+        with self._stateLock:
+            ## 重新启动时清除停机标志，允许再次迁移到 UP
+            self._stopping = False
         self._reconnect = self._buildReconnect()
         self._reconnect.start()
 
@@ -89,6 +94,9 @@ class TcpControlLayer(BaseService, SignalSink):
     #       继续往已关闭的套接字直发应答。这里只迁移状态，不走 onLinkDown，
     #       避免停机过程中又把重连线程拉起来。
     def stop(self) -> None:
+        with self._stateLock:
+            ## 先置停机标志，重连成功回调据此拒绝迁移到 UP
+            self._stopping = True
         self.transitionTo(LINK_DOWN, "stop", "STOP")
         self._haltThread(self._reconnect)
         self._haltThread(self._heart)
@@ -102,6 +110,10 @@ class TcpControlLayer(BaseService, SignalSink):
     #  @return 状态发生变更返回 True
     def transitionTo(self, state: str, reason: str, source: str) -> bool:
         with self._stateLock:
+            ## 停机后拒绝迁移到 UP，避免重连回调把已停链路翻回可用
+            ## getattr 兼容按类直接构造、未走 __init__ 的定向测试对象
+            if getattr(self, "_stopping", False) and state == LINK_UP:
+                return False
             if state == self._linkState:
                 return False
             self._linkState = state
@@ -109,15 +121,25 @@ class TcpControlLayer(BaseService, SignalSink):
             self._logger.info("TcpControl", f"link {state} reason={reason} source={source}")
         return True
 
-    ## @brief 重连成功回调：迁移 UP、新建心跳与解码线程、通知上游
+    ## @brief 重连成功回调：原子迁移 UP 并拉起线程，停机置位期间不启动
     #  @return 无
+    #  @note 状态迁移、停机检查、线程装配与启动全在同一把锁内，彻底消除 stop
+    #        与本回调之间的检查-使用窗口；BaseThread.start 只起线程不回调，锁内安全。
+    #        上游通知放到锁外，避免回调重入本层锁
     def _onConnected(self) -> None:
-        if self.transitionTo(LINK_UP, "connected", "RECONNECT"):
-            self._heart = self._buildHeart()
-            self._decode = self._buildDecode()
-            self._heart.start()
-            self._decode.start()
-            self.onLinkUp()
+        with self._stateLock:
+            if self._stopping or self._linkState == LINK_UP:
+                return
+            self._linkState = LINK_UP
+            heart = self._buildHeart()
+            decode = self._buildDecode()
+            self._heart = heart
+            self._decode = decode
+            heart.start()
+            decode.start()
+        if self._logger is not None:
+            self._logger.info("TcpControl", "link UP reason=connected source=RECONNECT")
+        self.onLinkUp()
 
     ## @brief 心跳发送失败回调：宣告 DOWN（去重由返回值处理）
     #  @return 无

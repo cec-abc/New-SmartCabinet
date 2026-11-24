@@ -1,6 +1,7 @@
 """识别模块纯函数：拼接标记、空间归集、查表校验与协议四键条目组帧。"""
 from __future__ import annotations
 
+import math
 from collections.abc import Callable
 
 from edge.exceptions import EdgeError, ErrorCode
@@ -124,7 +125,11 @@ def confidenceOf(detection: DetectionItem) -> float:
     raw = detection.get(DETECTION_CONFIDENCE_FIELD)
     if isinstance(raw, bool) or not isinstance(raw, (int, float)):
         return 0.0
-    return float(raw)
+    value = float(raw)
+    ## 非有限值（nan/inf）会让阈值比较失效、json.dumps 产出非法 token，按 0.0 处理
+    if not math.isfinite(value):
+        return 0.0
+    return value
 
 
 ## @brief 读取检测结果的检测框；缺该键（旧格式或测试桩）或形状不对时返回 None
@@ -135,9 +140,13 @@ def boxOf(detection: DetectionItem) -> tuple[float, float, float, float] | None:
     if not isinstance(raw, (list, tuple)) or len(raw) != 4:
         return None
     try:
-        return (float(raw[0]), float(raw[1]), float(raw[2]), float(raw[3]))
+        box = (float(raw[0]), float(raw[1]), float(raw[2]), float(raw[3]))
     except (TypeError, ValueError):
         return None
+    ## 非有限坐标会让四边比较全为假、检测项被静默丢弃，按无框处理
+    if not all(math.isfinite(value) for value in box):
+        return None
+    return box
 
 
 ## @brief 判断检测框是否完全落在 ROI 矩形内（四边都不越界）
@@ -156,15 +165,21 @@ def isBoxFullyInsideRoi(box: tuple[float, float, float, float] | None,
 ## @brief 只保留检测框完全落在 ROI 矩形内的检测项；供逐 ROI 几何判定使用
 #  @param detections 全图推理得到的检测结果（带 box）
 #  @param row 对照表行
+#  @param requireBox 为真时缺框、坏框一律拒识；默认假兼容旧格式与测试桩
 #  @return 落在该 ROI 内的检测项列表
-#  @note 生产检测项必带 box 字段，走严格几何判定；缺 box 是旧格式或测试桩，
-#        兼容保留（视为在内）以免破坏既有行为，真实推理链路不会走到这条分支
-def detectionsInRoi(detections: list[DetectionItem],
-                    row: RoiBindingRow) -> list[DetectionItem]:
+#  @note 生产装配注入 requireBox=True：检测结果须带位置框，缺框按未识别，
+#        避免无框检测项对所有货位恒命中造成误识
+def detectionsInRoi(detections: list[DetectionItem], row: RoiBindingRow,
+                    requireBox: bool = False) -> list[DetectionItem]:
     kept: list[DetectionItem] = []
     for detection in detections:
         box = boxOf(detection)
-        if box is None or isBoxFullyInsideRoi(box, row):
+        if box is None:
+            ## 缺框、坏框：生产口径拒识，兼容口径按旧行为保留
+            if not requireBox:
+                kept.append(detection)
+            continue
+        if isBoxFullyInsideRoi(box, row):
             kept.append(detection)
     return kept
 
@@ -196,7 +211,8 @@ def resolveActualItem(detections: list[DetectionItem],
                       classItemMap: ClassItemMap) -> tuple[str, float]:
     if not detections:
         return "", 0.0
-    confidence = max(confidenceOf(detection) for detection in detections)
+    ## 取最低置信度：任一参与识别的检测项把握不足即拉低整组，避免单项高分带过
+    confidence = min(confidenceOf(detection) for detection in detections)
     classNames = frozenset(classNameOf(detection) for detection in detections)
     if len(classNames) == 1:
         return classItemMap.get(next(iter(classNames)), ""), confidence
@@ -280,7 +296,8 @@ def matchMarker(detections: list[DetectionItem], markerId: str,
                     detection for detection in detections
                     if classNameOf(detection) in comboClasses
                 ]
-                return True, max(confidenceOf(d) for d in matched)
+                ## 组合识别取最低置信度：任一项低分都不得被其它高分带过
+                return True, min(confidenceOf(d) for d in matched)
     ## 组合表折算不出物品名时，按单个标志直映
     matched = [
         detection for detection in detections
@@ -288,7 +305,7 @@ def matchMarker(detections: list[DetectionItem], markerId: str,
     ]
     if not matched:
         return False, 0.0
-    return True, max(confidenceOf(detection) for detection in matched)
+    return True, min(confidenceOf(detection) for detection in matched)
 
 
 ## @brief 按对照表行产出一条协议条目
@@ -315,7 +332,8 @@ def buildRowItem(row: RoiBindingRow, detected: bool, confidence: float) -> AckIt
 #        并统一转成浮点数，避免整数写成另一种 JSON 数值类型
 def buildAckItem(position: str, toolId: str, confidence: float,
                  alertType: str) -> AckItem:
-    bounded = min(max(float(confidence), CONFIDENCE_MIN), CONFIDENCE_MAX)
+    value = float(confidence) if math.isfinite(confidence) else 0.0
+    bounded = min(max(value, CONFIDENCE_MIN), CONFIDENCE_MAX)
     return {
         POSITION_FIELD: position,
         TOOL_ID_FIELD: toolId,

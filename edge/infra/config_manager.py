@@ -71,6 +71,8 @@ class IniConfigManager(IConfig):
         self._data: dict[str, dict[str, Any]] = {}
         ## @brief 注入的日志器，可为空
         self._logger: ILogger | None = logger
+        ## @brief 未注入日志器时暂存的默认值提示，setLogger 后补记
+        self._pendingDefaultLogs: list[str] = []
         self.loadConfig(configPath)
 
     ## @brief 获取全局唯一实例；首次调用注入路径，双检锁避免并发重复加载
@@ -88,6 +90,17 @@ class IniConfigManager(IConfig):
                     shared = cls(configPath, logger)
                     cls._sharedInstance = shared
         return shared
+
+    ## @brief 延迟注入日志器并补记暂存提示；装配期日志器晚于配置创建时使用
+    #  @param logger 可选日志器，为空则保持静默
+    #  @return 无
+    def setLogger(self, logger: ILogger | None) -> None:
+        self._logger = logger
+        if logger is None:
+            return
+        for message in self._pendingDefaultLogs:
+            logger.info(MODULE_NAME, message)
+        self._pendingDefaultLogs.clear()
 
     ## @brief 读取并解析 INI；失败一律转 EdgeError(CONFIG) 阻断启动
     #  @param configPath INI 文件路径
@@ -121,8 +134,9 @@ class IniConfigManager(IConfig):
             return sectionData[key]
         if default is None:
             raise EdgeError(ErrorCode.CONFIG, f"配置项缺失: [{section}] {key}")
+        message = f"配置项 [{section}] {key} 缺失，使用默认值 {default}"
         if self._logger is not None:
-            self._logger.info(
-                MODULE_NAME, f"配置项 [{section}] {key} 缺失，使用默认值 {default}"
-            )
+            self._logger.info(MODULE_NAME, message)
+        else:
+            self._pendingDefaultLogs.append(message)
         return default

@@ -18,6 +18,10 @@ from edge.modules.tcp.tcp_comm import (
 ## @author 袁燕
 
 
+## @brief 坏帧日志采样间隔；连续坏帧时每 N 帧记一条，避免日志洪泛撑爆队列
+BAD_FRAME_LOG_INTERVAL: int = 64
+
+
 ## @brief 帧解码线程；处理半包/粘包与超长帧，解码后分发至 Sink
 class TcpDecodeThread(BaseThread):
     ## @brief 构造解码线程
@@ -31,6 +35,8 @@ class TcpDecodeThread(BaseThread):
         self._comm: TcpComm = comm
         ## @brief 信号回调
         self._sink: SignalSink = sink
+        ## @brief 坏帧累计计数，用于日志采样；计数本身由控制层独立维护
+        self._badFrameCount: int = 0
 
     ## @brief 主循环：收数据、切帧、分发；停机、断链或缓冲超限时收敛退出
     #  @return 无
@@ -112,11 +118,15 @@ class TcpDecodeThread(BaseThread):
         try:
             decoded = self._comm.decodeAndParse(raw)
         except EdgeError as exc:
-            if self._logger is not None:
-                ## 坏帧进不了正常接收流程，记一条说明日志，不硬记成接收帧
-                self._logger.info(
+            self._badFrameCount += 1
+            if (self._logger is not None
+                    and (self._badFrameCount - 1) % BAD_FRAME_LOG_INTERVAL == 0):
+                ## 坏帧进不了正常接收流程；按固定间隔采样记录，
+                ## 避免坏帧洪泛把日志队列撑爆。计数由上游 onFrameError 独立维护
+                self._logger.error(
                     RX_MODULE_NAME,
-                    f"坏帧已丢弃 字节数={len(raw)} 异常码={exc.code.name} 原因={exc}",
+                    f"坏帧已丢弃 累计={self._badFrameCount} 字节数={len(raw)} "
+                    f"异常码={exc.code.name} 原因={exc}",
                 )
             self._sink.onFrameError(exc)
             return

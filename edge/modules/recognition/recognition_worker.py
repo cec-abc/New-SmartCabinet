@@ -73,6 +73,7 @@ class RecognitionWorker(BaseThread):
     #  @param confidenceThreshold 置信度门槛，默认取模块常量（配置可覆盖）
     #  @param rollThreshold 全景图滚动删旧占用阈值（构造注入）
     #  @param usageRatio 磁盘占用比例提供器（注入，便于确定性举证）
+    #  @param requireBox 为真时缺框检测项拒识，默认假兼容旧格式与测试桩
     #  @return 无
     def __init__(self, workerId: int, requestId: str, saveDir: str,
                  engine: IRecognitionEngine, logger: ILogger | None,
@@ -86,7 +87,8 @@ class RecognitionWorker(BaseThread):
                  classItemComboMap: dict[frozenset[str], str] | None = None,
                  confidenceThreshold: float = DEFAULT_CONFIDENCE_THRESHOLD,
                  rollThreshold: float = DEFAULT_PANORAMA_ROLL_THRESHOLD,
-                 usageRatio: Callable[[], float] | None = None) -> None:
+                 usageRatio: Callable[[], float] | None = None,
+                 requireBox: bool = False) -> None:
         super().__init__(name=f"RecognitionWorker-{workerId}", logger=logger)
         ## @brief 线程编号
         self._workerId: int = workerId
@@ -132,6 +134,8 @@ class RecognitionWorker(BaseThread):
         self._usageRatio: Callable[[], float] = (
             usageRatio if usageRatio is not None else neverUsage
         )
+        ## @brief 缺框检测项是否拒识；生产装配注入真，测试桩默认假
+        self._requireBox: bool = requireBox
         ## @brief 本轮全景删旧计数，供验收举证与现场排查
         self.removedPanoramaCount: int = 0
 
@@ -230,7 +234,7 @@ class RecognitionWorker(BaseThread):
     #  @param row 对照表行
     #  @return 协议条目；单行无命中按未识别上报，不牵连其他行
     def recognizeRow(self, detections: list[DetectionItem], row: RoiBindingRow) -> AckItem:
-        inRoi = detectionsInRoi(detections, row)
+        inRoi = detectionsInRoi(detections, row, requireBox=self._requireBox)
         if not inRoi:
             return buildRowItem(row, False, 0.0)
         detected, confidence = matchMarker(

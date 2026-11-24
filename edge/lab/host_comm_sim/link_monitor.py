@@ -139,6 +139,25 @@ class LinkMonitor:
         self._push(LinkEvent(EVENT_SENT, "", "上位机下发一帧", raw, frame))
         return True
 
+    ## @brief 发送原始字节帧；用于伪造异常帧验证对端校验，与 sendFrame 共用发送锁
+    #  @param raw 待发送的完整帧字节（调用方自行加换行）
+    #  @return 发送成功返回 True
+    #  @note 不做任何帧内容校验，非法 JSON、非对象帧、超长帧都由对端判定；
+    #        与 sendFrame 共用同一把锁，避免界面与接收线程并发写同一套接字
+    def sendRawFrame(self, raw: bytes) -> bool:
+        conn = self._conn
+        if conn is None or not self._connected:
+            self._push(LinkEvent(EVENT_ERROR, "", "未连接，无法下发原始帧"))
+            return False
+        with self._sendLock:
+            try:
+                conn.sendall(raw)
+            except OSError as error:
+                self._push(LinkEvent(EVENT_ERROR, "", f"下发原始帧失败: {error}"))
+                return False
+        self._push(LinkEvent(EVENT_SENT, "", "上位机下发原始帧", raw, None))
+        return True
+
     ## @brief 停止监控并释放套接字；重复调用安全
     #  @return 无
     def stop(self) -> None:

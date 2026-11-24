@@ -45,6 +45,8 @@ MIN_SAFE_FRAME_LIMIT_BYTES: int = 1
 MAX_RECV_BUFFER_BYTES: int = HOST_FRAME_MAX_BYTES
 ## @brief 紧凑 JSON 里相邻清单条目之间的逗号占 1 字节
 ITEM_SEPARATOR_BYTES: int = 1
+## @brief 请求标识最大字符数；超长 ID 会在日志与队列里被放大，按坏帧拒绝
+MAX_REQUEST_ID_CHARS: int = 128
 ## @brief 日志模块名
 MODULE_NAME: str = "TcpComm"
 ## @brief 接收方向日志的模块名
@@ -280,8 +282,21 @@ class TcpComm:
             parsed = json.loads(raw.decode("utf-8"))
         except (ValueError, UnicodeDecodeError) as exc:
             raise EdgeError(ErrorCode.FRAME_PARSE, f"帧解析失败: {exc}") from exc
+        except RecursionError as exc:
+            ## 深度嵌套 JSON 会抛 RecursionError（属 RuntimeError，不在上一分支）；
+            ## 不转 FRAME_PARSE 会穿透到线程顶层杀死解码线程且不会触发重连
+            raise EdgeError(ErrorCode.FRAME_PARSE, "帧嵌套过深") from exc
         # 帧根必须是对象，否则下游 buildIoLogPayload / signal.get 按 dict 取键会抛
         # TypeError 或取到错值；在此统一拦截，避免脏数据穿透到业务逻辑层
         if not isinstance(parsed, dict):
             raise EdgeError(ErrorCode.FRAME_PARSE, "帧根必须是对象而非数组或标量")
+        requestId = parsed.get("request_id")
+        if requestId is not None:
+            if not isinstance(requestId, str):
+                raise EdgeError(ErrorCode.FRAME_PARSE, "请求标识必须是字符串")
+            if len(requestId) > MAX_REQUEST_ID_CHARS:
+                raise EdgeError(
+                    ErrorCode.FRAME_PARSE,
+                    f"请求标识过长 {len(requestId)} > {MAX_REQUEST_ID_CHARS}",
+                )
         return parsed

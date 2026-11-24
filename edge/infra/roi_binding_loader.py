@@ -31,6 +31,8 @@ MIN_PRINTABLE_CODE: int = 32
 MIN_WORKER_ID: int = 1
 ## @brief 合法的工作线程编号上界
 MAX_WORKER_ID: int = 4
+## @brief ROI 矩形坐标绝对上限；覆盖 8K 相机全景，拦住远超画布的离谱配置
+MAX_ROI_COORDINATE: int = 8192
 ## @brief 十二列表头里必需的九列，缺任一列即判配置错误
 ## tool_id / required_type / confidence 三列可缺省，由 buildRow 给默认值
 REQUIRED_COLUMNS: tuple[str, ...] = (
@@ -206,7 +208,11 @@ class RoiBindingLoader:
         rectY1 = self.parseInt(record, "rect_y1", lineNo)
         rectX2 = self.parseInt(record, "rect_x2", lineNo)
         rectY2 = self.parseInt(record, "rect_y2", lineNo)
-        if rectX2 <= rectX1 or rectY2 <= rectY1:
+        if (rectX2 <= rectX1 or rectY2 <= rectY1
+                or min(rectX1, rectY1, rectX2, rectY2) < 0
+                or max(rectX1, rectY1, rectX2, rectY2) > MAX_ROI_COORDINATE):
+            ## 生产链路只做相对坐标比较、不调 crop 的越界校验；装载期就必须挡住
+            ## 负值与远超画布的矩形，否则检测框会被恒判"完全落在 ROI 内"
             raise EdgeError(
                 ErrorCode.CONFIG,
                 f"ROI 矩形非法 (第 {lineNo} 行): "

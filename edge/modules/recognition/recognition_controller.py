@@ -56,6 +56,7 @@ class RecognitionController(BaseService):
     #  @param confidenceThreshold 置信度门槛，默认取模块常量（配置可覆盖）
     #  @param rollThreshold 全景图滚动删旧占用阈值（构造注入）
     #  @param usageRatio 磁盘占用比例提供器（注入，便于确定性举证）
+    #  @param requireBox 为真时缺框检测项拒识，默认假兼容旧格式与测试桩
     #  @return 无
     def __init__(self, engine: IRecognitionEngine, modelPath: str,
                  saveDirs: list[str], sink: IRecognitionSink, logger: ILogger | None,
@@ -70,6 +71,7 @@ class RecognitionController(BaseService):
                  confidenceThreshold: float = DEFAULT_CONFIDENCE_THRESHOLD,
                  rollThreshold: float = DEFAULT_PANORAMA_ROLL_THRESHOLD,
                  usageRatio: Callable[[], float] | None = None,
+                 requireBox: bool = False,
                  ) -> None:
         ## @brief 推理引擎
         self._engine: IRecognitionEngine = engine
@@ -121,6 +123,8 @@ class RecognitionController(BaseService):
         self._rollThreshold: float = rollThreshold
         ## @brief 磁盘占用比例提供器，None 时由 worker 按不触发删旧处理
         self._usageRatio: Callable[[], float] | None = usageRatio
+        ## @brief 缺框检测项是否拒识；生产装配注入真
+        self._requireBox: bool = requireBox
 
     ## @brief 初始化：校验配置并仅加载一次模型，Fail-Fast 不引入能力降级
     #  @return 无
@@ -271,6 +275,7 @@ class RecognitionController(BaseService):
             self._roiBindingRows, self._stitcher, frames, self._classItemComboMap,
             confidenceThreshold=self._confidenceThreshold,
             rollThreshold=self._rollThreshold, usageRatio=self._usageRatio,
+            requireBox=self._requireBox,
         )
 
     ## @brief 统一的错误日志出口，异常码使用 code.name

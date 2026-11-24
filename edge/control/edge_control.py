@@ -7,7 +7,7 @@ from time import monotonic
 
 from edge.base.base_service import BaseService
 from edge.control.edge_dispatch_thread import EdgeDispatchThread
-from edge.exceptions import EdgeError
+from edge.exceptions import EdgeError, ErrorCode
 from edge.interfaces.i_frame_sink import IFrameSink
 from edge.interfaces.i_logger import ILogger
 from edge.interfaces.i_sinks import (
@@ -38,6 +38,8 @@ SIGNAL_TYPE_KEY: str = "type"
 REQUEST_ID_KEY: str = "requestId"
 ## @brief 协议请求标识键（上位机原文 request_id）
 WIRE_REQUEST_ID_KEY: str = "request_id"
+## @brief 日志里保留的未知字段摘要最大字符数，防止网络超长字段撑爆日志队列
+MAX_LOG_TEXT_CHARS: int = 64
 ## @brief 已完成请求的应答记录条数上限，超限丢弃最旧
 MAX_COMPLETED_REQUESTS: int = 32
 ## @brief 在途聚合表条数上限，超限丢弃最旧的请求
@@ -180,6 +182,8 @@ class EdgeControl(BaseService, SignalSink, ICaptureSink, IRecognitionSink, IFram
         self._requestId: str = ""
         ## @brief 链路就绪标记，由 Sink 宣告维护
         self._linkUp: bool = False
+        ## @brief 停机总闸；置位后业务回调不再触发采集与识别，防止停机中重启已停模块
+        self._stopping: bool = False
         ## @brief 待发送应答队列（回调内只入队）
         self._outbox: list[CachedEvent] = []
         ## @brief 停机步骤轨迹，供验收举证
@@ -210,6 +214,8 @@ class EdgeControl(BaseService, SignalSink, ICaptureSink, IRecognitionSink, IFram
         self._failedWorkers: dict[str, set[int]] = {}
         ## @brief 采集线程编号到当前请求标识的映射，失败回调据此归位请求
         self._workerRequests: dict[int, str] = {}
+        ## @brief 坏帧丢弃累计数，仅统计 FRAME_PARSE；供验收举证
+        self._frameErrorCount: int = 0
 
     ## @brief 生命周期初始化：只初始化模块，不启采集/识别线程（D-02）
     #  @return 无
@@ -242,21 +248,43 @@ class EdgeControl(BaseService, SignalSink, ICaptureSink, IRecognitionSink, IFram
             self._dispatchThread.start()
         self._logger.info(MODULE_NAME, "系统启动完成, 业务线程待链路 UP 后拉起")
 
-    ## @brief 一键停机：先停应答排空线程，再严格串行 USB → RECOGNITION → TCP → LOG
+    ## @brief 一键停机：先置总闸，再串行停 USB → RECOGNITION → TCP → LOG；单步异常不阻断后续
     #  @return 无
+    #  @note 任一步失败仍继续其余步骤，运行态清理放在 finally，保证停机终态收敛
     def stopSystem(self) -> None:
-        ## 排空线程最先停止，避免停机过程中继续把应答发到已停链路
-        if self._dispatchThread is not None:
-            self._dispatchThread.stop(THREAD_STOP_TIMEOUT_SEC)
         with self._stateLock:
+            ## 总闸先置位，迟到的 Sink 回调据此不再触发业务
+            self._stopping = True
             self._stopTrace = []
-        for step in STOP_ORDER:
-            self._wiring.stopActions[step]()
-            with self._stateLock:
-                self._stopTrace.append(step)
-        self.clearRuntimeState()
-        ## stop() 的统计信息使用 info
-        self._logger.info(MODULE_NAME, f"停机统计 顺序={'-'.join(self.getStopTrace())}")
+        firstError: Exception | None = None
+        try:
+            ## 排空线程最先停止，避免停机过程中继续把应答发到已停链路；
+            ## 与其它停机步骤一样 best-effort，异常不阻断后续清理
+            if self._dispatchThread is not None:
+                try:
+                    self._dispatchThread.stop(THREAD_STOP_TIMEOUT_SEC)
+                except Exception as error:
+                    firstError = error
+                    self._logger.error(
+                        MODULE_NAME, f"停机步骤 排空线程 异常: {error}", exception=error,
+                    )
+            for step in STOP_ORDER:
+                try:
+                    self._wiring.stopActions[step]()
+                except Exception as error:
+                    if firstError is None:
+                        firstError = error
+                    self._logger.error(
+                        MODULE_NAME, f"停机步骤 {step} 异常: {error}", exception=error,
+                    )
+                with self._stateLock:
+                    self._stopTrace.append(step)
+        finally:
+            self.clearRuntimeState()
+            ## stop() 的统计信息使用 info
+            self._logger.info(MODULE_NAME, f"停机统计 顺序={'-'.join(self.getStopTrace())}")
+        if firstError is not None:
+            raise firstError
 
     ## @brief 清空在途请求、聚合中间态与已完成应答，避免停机后残留占用内存
     #  @return 无
@@ -275,13 +303,27 @@ class EdgeControl(BaseService, SignalSink, ICaptureSink, IRecognitionSink, IFram
     #  @param signal 已解码信号帧
     #  @return 命中处理器返回 True
     def routeSignal(self, signal: DecodedSignal) -> bool:
+        with self._stateLock:
+            stopping = self._stopping
+        if stopping:
+            ## 停机中丢弃迟到信号，防止在途帧重启已停止的采集与识别
+            return True
         signalType = str(signal.get(SIGNAL_TYPE_KEY, ""))
         handler = self._asyncHandlers.get(signalType)
         if handler is None:
-            self._logger.error(MODULE_NAME, f"未注册的信号键: {signalType}")
+            ## 未知 type 来自网络，截短记录，避免超长 type 撑爆日志队列
+            preview = signalType[:MAX_LOG_TEXT_CHARS]
+            self._logger.error(
+                MODULE_NAME,
+                f"未注册的信号键: {preview} 长度={len(signalType)}",
+            )
             return False
         ## 请求标识只提取一次；处理器调用提平在锁外，避免深嵌套
         requestId = self.extractRequestId(signal)
+        if not requestId:
+            ## 无请求标识的帧无法配对应答，记日志后丢弃，不让上位机干等到重发超时
+            self._logger.error(MODULE_NAME, "信号缺少请求标识，已丢弃")
+            return True
         with self._stateLock:
             self._requestId = requestId
         ## 同一请求只处理一次：同一 request_id 只做一次扫描，重复请求直接复用上次应答
@@ -300,22 +342,32 @@ class EdgeControl(BaseService, SignalSink, ICaptureSink, IRecognitionSink, IFram
             )
             self.enqueueDegradedFrame(requestId)
         except Exception as error:
-            ## 处理器内的内置异常同样不得穿透到解码线程，统一按链路异常降级
+            ## 无法识别的故障归入配置错误类别：跨出处理器边界前包装成 EdgeError(CONFIG)
+            wrapped = EdgeError(
+                ErrorCode.CONFIG, f"请求 {requestId} 处理出现未预期异常: {error}",
+            )
+            wrapped.__cause__ = error
+            ## 处理器内的内置异常同样不得穿透到解码线程，统一按配置错误降级
             self._logger.error(
-                MODULE_NAME, f"请求 {requestId} 处理出现未预期异常: {error}",
-                exception=error,
+                MODULE_NAME,
+                f"请求 {requestId} 处理出现未预期异常 {wrapped.code.name}: {error}",
+                exception=wrapped,
             )
             self.enqueueDegradedFrame(requestId)
         return True
 
     ## @brief 取出信号中的请求标识；协议原文 request_id 优先，取不到时改用内部 requestId
     #  @param signal 已解码信号帧
-    #  @return 请求标识；没有则空串
+    #  @return 请求标识；两键缺失或类型非字符串时返回空串
+    #  @note 不做 str() 强转：数字等类型不是合法请求标识，强转会伪造出可配对的假 ID
     def extractRequestId(self, signal: DecodedSignal) -> str:
-        wireId = str(signal.get(WIRE_REQUEST_ID_KEY, ""))
-        if wireId:
+        wireId = signal.get(WIRE_REQUEST_ID_KEY, "")
+        if isinstance(wireId, str) and wireId:
             return wireId
-        return str(signal.get(REQUEST_ID_KEY, ""))
+        internalId = signal.get(REQUEST_ID_KEY, "")
+        if isinstance(internalId, str) and internalId:
+            return internalId
+        return ""
 
     ## @brief 重复请求命中处理：把上次应答重新入队，不重复触发采集与识别
     #  @param requestId 请求标识
@@ -368,11 +420,16 @@ class EdgeControl(BaseService, SignalSink, ICaptureSink, IRecognitionSink, IFram
     def onSignalDecoded(self, signal: DecodedSignal) -> None:
         self.routeSignal(signal)
 
-    ## @brief 坏帧回调：只记日志
+    ## @brief 坏帧回调：按帧解析错误计数并记说明日志
     #  @param exception 解析异常
     #  @return 无
+    #  @note 只统计 FRAME_PARSE；坏帧的错误日志由解码层统一记，此处只记计数说明，
+    #        避免同一坏帧产生两条 error
     def onFrameError(self, exception: Exception) -> None:
-        self._logger.error(MODULE_NAME, "帧解析失败", exception=exception)
+        if isinstance(exception, EdgeError) and exception.code == ErrorCode.FRAME_PARSE:
+            with self._stateLock:
+                self._frameErrorCount += 1
+            self._logger.info(MODULE_NAME, "坏帧计数已累加")
 
     ## @brief 链路断开宣告：置链路标记为不可用，后续应答在分发时直接丢弃
     #  @param reason 断开原因
@@ -395,6 +452,11 @@ class EdgeControl(BaseService, SignalSink, ICaptureSink, IRecognitionSink, IFram
     #  @param path 采集目录
     #  @return 无
     def onCaptureSuccess(self, workerId: int, path: str) -> None:
+        with self._stateLock:
+            stopping = self._stopping
+        if stopping:
+            ## 停机中的采集回调不再触发识别，避免重启已停模块
+            return
         self._wiring.triggerRecognition(workerId, self.getRequestId())
         self._logger.info(MODULE_NAME, f"采集完成 worker={workerId} dir={path}")
 
@@ -432,6 +494,9 @@ class EdgeControl(BaseService, SignalSink, ICaptureSink, IRecognitionSink, IFram
     def onFrameCaptured(self, workerId: int, frames: tuple[bytes, ...],
                         requestId: str) -> None:
         with self._stateLock:
+            if self._stopping:
+                ## 停机中的帧回调不再触发识别，避免重启已停模块
+                return
             ## 记住该线程正在服务的请求，失败回调据此把降级条目归到正确的请求
             self._workerRequests[workerId] = requestId
         if self.isRequestAnswered(requestId):
@@ -791,3 +856,9 @@ class EdgeControl(BaseService, SignalSink, ICaptureSink, IRecognitionSink, IFram
     #  @return 累计丢帧次数
     def getDroppedFrameCount(self) -> int:
         return self._wiring.droppedFrameCountProbe()
+
+    ## @brief 返回仅统计 FRAME_PARSE 的累计坏帧数，用于运行期诊断
+    #  @return 累计坏帧数
+    def getFrameErrorCount(self) -> int:
+        with self._stateLock:
+            return self._frameErrorCount

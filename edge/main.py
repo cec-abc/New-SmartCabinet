@@ -2,7 +2,8 @@
 from __future__ import annotations
 
 import signal
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 from functools import partial
 from threading import Event
 from types import FrameType
@@ -59,6 +60,22 @@ def waitForStop(stopEvent: Event) -> None:
     stopEvent.wait()
 
 
+## @brief 托管运行期：无论正常退出还是异常，都先停机再释放进程锁
+#  @param lock 进程文件锁
+#  @param stop 停机动作
+#  @return 上下文管理器
+@contextmanager
+def managedRun(lock: ProcessFileLock, stop: Callable[[], None]) -> Iterator[None]:
+    try:
+        yield
+    finally:
+        ## 异常路径可能处于半启动态，停机失败也不能挡住进程锁释放
+        try:
+            stop()
+        finally:
+            lock.release()
+
+
 ## @brief 进程入口；按取锁、装配、注册信号、启动、等待退出、串行停机的顺序执行
 #  @param partsProvider 装配参数提供器
 #  @param signalRegistrar 信号注册器
@@ -75,14 +92,13 @@ def main(partsProvider: PartsProvider | None = None,
     processLock.acquireOrExit()
     parts = partsProvider() if partsProvider is not None else defaultParts()
     system = buildSystem(parts)
-    stopEvent = Event()
-    registrar = signalRegistrar if signalRegistrar is not None else registerSignals
-    registrar(stopEvent)
-    system.startSystem()
-    waiter = exitWaiter if exitWaiter is not None else partial(waitForStop, stopEvent)
-    waiter()
-    system.stopSystem()
-    processLock.release()
+    with managedRun(processLock, system.stopSystem):
+        stopEvent = Event()
+        registrar = signalRegistrar if signalRegistrar is not None else registerSignals
+        registrar(stopEvent)
+        system.startSystem()
+        waiter = exitWaiter if exitWaiter is not None else partial(waitForStop, stopEvent)
+        waiter()
 
 
 if __name__ == "__main__":

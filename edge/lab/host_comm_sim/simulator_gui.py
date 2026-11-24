@@ -22,6 +22,7 @@ from edge.lab.host_comm_sim.link_monitor import (
 from edge.lab.host_comm_sim.protocol import (
     FRAME_TYPE_PERIODIC,
     FRAME_TYPE_RECOGNIZE_ACK,
+    HOST_FRAME_MAX_BYTES,
     buildRecognizeReq,
 )
 
@@ -65,6 +66,7 @@ class SimulatorApp:
         self._buildWindow()
         self._buildConnectBar()
         self._buildRequestBar()
+        self._buildRawFrameBar()
         self._buildWatchArea()
         self._buildLogArea()
         self._buildStatusBar()
@@ -130,6 +132,30 @@ class SimulatorApp:
         self._reqStatusVar = tk.StringVar(value="尚未连接边缘机")
         ttk.Label(bar, textvariable=self._reqStatusVar, foreground="#1a7f37").pack(
             side=tk.LEFT, padx=(16, 0),
+        )
+
+    ## @brief 帧编辑栏：输入任意帧文本原样下发，用于伪造异常帧验证边缘机校验
+    #  @return 无
+    def _buildRawFrameBar(self) -> None:
+        bar = ttk.LabelFrame(
+            self._root, text="帧编辑 / 原始帧下发（伪造异常帧测试用）", padding=(12, 8),
+        )
+        bar.pack(fill=tk.X, padx=12, pady=(4, 8))
+        hint = (
+            "输入完整帧文本后原样发出，不经过标准组帧（中间换行会压成空格，始终按一帧发送）。"
+            "例：{\"type\":\"recognize_req\",\"request_id\":\"x\",\"extra\":\"bad\"}；"
+            "也可发非法 JSON 或非对象帧测试对端校验。"
+        )
+        ttk.Label(bar, text=hint, foreground="#555555", justify=tk.LEFT, wraplength=980).pack(
+            anchor=tk.W, pady=(0, 4),
+        )
+        self._rawFrameText = self._makeTextWithScroll(bar, height=3)
+        btnBar = ttk.Frame(bar)
+        btnBar.pack(fill=tk.X, pady=(6, 0))
+        ttk.Button(btnBar, text="发送原始帧", command=self._onSendRaw).pack(side=tk.LEFT)
+        self._rawStatusVar = tk.StringVar(value="")
+        ttk.Label(btnBar, textvariable=self._rawStatusVar, foreground="#b06000").pack(
+            side=tk.LEFT, padx=(12, 0),
         )
 
     ## @brief 监控展示区：周期帧（原样）+ 识别清单（原样）
@@ -257,6 +283,34 @@ class SimulatorApp:
             self._reqStatusVar.set(f"已下发识别请求 {requestId}，等待边缘机回清单")
             self._statusVar.set(f"识别请求已下发：{requestId}")
             self._nextRequestId()
+
+    ## @brief 发送编辑框里的原始帧文本；非法内容也原样发出，交由边缘机校验
+    #  @return 无
+    #  @note 不经 buildRecognizeReq 重写，绕过 JSON 结构化，便于伪造异常帧验证对端校验；
+    #        超长帧会触发边缘机接收缓冲超限并断链，故在界面侧提醒
+    def _onSendRaw(self) -> None:
+        if not self._link.isConnected():
+            messagebox.showwarning("提示", "尚未连接边缘机，无法下发原始帧")
+            return
+        text = self._rawFrameText.get("1.0", tk.END).strip()
+        if not text:
+            messagebox.showwarning("提示", "请在帧编辑框输入要发送的内容")
+            return
+        ## 对端按换行切帧；把编辑框里的中间换行压成空格，保证多行 JSON 仍是一帧
+        singleLine = " ".join(line.strip() for line in text.splitlines())
+        raw = (singleLine + "\n").encode("utf-8")
+        ## 1MB 缓冲上限，超过会被对端判链路异常；本地先提醒，不阻止发送以便测试
+        if len(raw) > HOST_FRAME_MAX_BYTES:
+            messagebox.showwarning(
+                "注意",
+                f"帧长度 {len(raw)} 超过 {HOST_FRAME_MAX_BYTES} 字节，"
+                "边缘机会判接收缓冲超限并断链，需重新连接",
+            )
+        if self._link.sendRawFrame(raw):
+            self._rawStatusVar.set(f"已原样下发 {len(raw)} 字节（非法帧将被对端丢弃）")
+            self._log(f"[原始帧下发 {strftime('%H:%M:%S')}]\n{text}")
+        else:
+            self._rawStatusVar.set("下发失败，请检查链路")
 
     ## @brief 请求编号自增
     #  @return 无
