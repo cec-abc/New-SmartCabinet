@@ -226,7 +226,7 @@
 | `test_second_request_gets_its_own_ack` | 连续两次不同 `request_id` | 第二个请求拿到自己的应答 | 两次应答的 `request_id` 分别为 `req-second-0001` / `req-second-0002`；第二次 `check_ack` 通过 | 通过 |
 | `test_real_tcp_serves_two_requests_and_keeps_decode_thread` | 真实 TCP 栈上连续两次请求 | 两次都拿到应答，解码线程不被业务异常打穿 | 两个 `request_id` 各回一帧且 `check_ack` 通过；`TcpDecode` 存活线程数 `== 1` | 通过 |
 | `test_stop_clears_runtime_state` / `test_stop_system_clears_aggregation_state` | 停机前有在途请求 / 聚合中间态 / 待发应答 | 停机后不残留运行态 | 停机前 `getPendingRequestCount() == 1`、`getAggregationCount() == 1`、`getOutboxCount() == 1`；停机后三项归 `0`，`getCompletedAckCount() == 0` | 通过 |
-| `test_class_item_map_takes_priority_over_single_marker` | 类别组合表 `{person,surfboard} → 滑板人偶` | 组合命中优先；组合查不到退回单标志直映；名字对不上不误判 | 组合命中 `detected is True` 且 `confidence == 0.91`；单标志 `detected is True` 且 `confidence == 0.88`；名字对不上 `detected is False` | 通过 |
+| `test_class_item_map_takes_priority_over_single_marker` | 类别组合表 `{person,surfboard} → 滑板人偶` | 组合命中优先；组合查不到退回单标志直映；名字对不上不误判 | 组合命中 `detected is True` 且 `confidence == 0.83`（组合取最低值，原 0.91 为 person/surfboard 中较高者）；单标志 `detected is True` 且 `confidence == 0.88`；名字对不上 `detected is False` | 通过 |
 
 #### 3.6.8 配置说明文档（1 条）
 

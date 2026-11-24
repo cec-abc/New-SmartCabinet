@@ -328,6 +328,22 @@
 - **上升为**：检视经验库（新增「业务分发 EdgeError+Exception 成对兜底」「在途字典淘汰全清」「注释函数名核实」三项检查点）；无新规则 / 无新裁决。
 - **来源**：用户 2026-11-23「识别清单指令后逻辑走读 review 验证完善」指令 + 三 Agent 并行走读/检视/协议事实源 + 独立审核 Agent 读盘复核。
 
+### L-36 ｜ 2026-11-24 ｜ 阶段 全模块整改（非编号阶段）
+
+- **触发**：袁总「全盘查看生产代码，一个文件一个文件看，不要凭印象，清孤独函数和业务到达不了的函数变量，做代码优化便于维护」。5 路子代理逐文件审计 + 主 agent 逐条磁盘复核 + 独立审核 Agent 读盘反证。
+- **结论**：**判"死代码"必须区分四类，不能只看"零直接调用"就删**——①接口契约/抽象方法（IPlatformAdapter.joinPath 等）删了类无法实例化；②线程框架钩子（runLoop 由 BaseThread.run 调）与注入回调（asyncHandlers、_sink、bindReader）；③验收观测口（`getWorkers`/`isCapturing`/`getDroppedFrameCount`/`getActiveWorkers` 被测试按名调用）；④装配占位默认值（`wiring.startCapture` 被测试断言"不被预启"、idle* 默认动作）。真正可删的是第五类：全库零引用常量、零调用普通方法、只赋值不读的字段（本轮删 `DUAL_CAMERA_FRAME_COUNT`/`USB_FOCUS_POSITION_PARAM`/`USB_CAMERA_COUNT_PARAM`/`MODULE_NAME`(dispatch)/`UNKNOWN_ITEM`/`ALERT_MISSING`/`ALERT_TYPE_VALUES` 七常量、删 `usbHasCameraStatus`/`emptyInfer`/`setFocusMode`/`isWorkerBusy` 四函数、删 `CameraProbeThread._cameraCount`/`_nextIndex` 两死字段并同步两处构造实参）。**子代理审计必有误判，主 agent 须逐条 grep 复核**：本轮子代理把被 12 处测试使用的 `getWorkers/isCapturing`、被 426 行使用的 controller `_cameraCount` 都误报可删，全部拦下。跨模块死注入簇（controller→worker 的 `_roiConfig` 等五字段只传不用）因删构造签名会破坏既有测试的按位构造（§7-2 既有测试零修改），遵循最小改动只登记不动。
+- **归属**：本轮已收敛（生产 ruff `All checks passed!`、生产 mypy 34 文件零错误、全量 pytest `333 passed 1 skipped`、已删符号生产零残留、独立审核 8/8 PASS 零误删、代码检视 P1=0）。检视提的 P2/P3（`fixed` 裸字符串、rknn 注释不全、历史痕迹表述）均为既有项非本轮引入，按最小改动不动。
+- **上升为**：检视经验库（新增「死代码五分类判别」「子代理审计须主 agent 逐条复核」「观测口/占位默认值不可按零调用删」「跨模块签名变更撞既有测试零修改门禁时只登记」四项检查点）；无新规则 / 无新裁决。
+- **来源**：用户 2026-11-24「全盘查看生产代码逐文件清理孤独函数与不可达变量」指令 + 5 路并行审计 + 主 agent 逐条复核 + 独立审核 Agent 读盘反证 + 代码检视 Agent。
+
+### L-37 ｜ 2026-11-24 ｜ 阶段 全模块整改（非编号阶段）
+
+- **触发**：袁总用模拟器伪造异常帧，把 `recognize_req` 的 key 拼错成 `request1111t_id`（`timestamp` 也拼错），发现周期帧照发但坏帧统计不涨。实验确认：`decodeAndParse` 只校验"request_id 存在时的类型/长度"，拼错的 key 变成"多余字段"被放行；控制层虽因取不到 ID 静默丢弃，但不调 `onFrameError`、不计坏帧、日志只说"缺少请求标识"——识别策略缺失。
+- **结论**：**解码层要按帧型做"必需字段存在性"校验，不能只校验"已知字段的合法性"**——否则 key 拼错会退化成"缺字段"，绕过坏帧统计。落地：`tcp_comm.py` 加 `INBOUND_RECOGNIZE_REQ_TYPE="recognize_req"` 常量，`decodeAndParse` 中若 `type` 命中该常量则强制 `request_id` 为非空字符串（缺失/空/非字符串一律抛 `FRAME_PARSE`，消息点明"键名不符或为空"），随后原有的类型/长度校验对其它帧照旧。**关键约束**：不能全局要求 request_id（契约测试 `{"ok":true}` 无 ID 帧必须放行），只在识别请求帧型上强制。**残留（如实披露）**：`type` 字段本身拼错时该规则不触发，属另一类坏帧、不在本次目标内。
+- **归属**：本轮已收敛（两阶段：先加 request_id 必填校验，袁总再要求"每个 key 都校对"→ 补 `RECOGNIZE_REQ_ALLOWED_KEYS` 三字段白名单 + timestamp 数值校验（bool 显式排除）。专项合计 17 项 PASS：坏 key/无 ID/空 ID/数字 ID/多余字段/timestamp 拼错/timestamp 类型错均拒，正常三键帧与非识别帧放行；333 测试全绿；ruff/mypy 通过；独立审核两轮逐项判定通过）。**兼容口径**：两键 recognize_req（无 timestamp）经解码层仍放行（控制层大量测试帧为该形态），白名单只拒非法/多余键、不强制 timestamp 必填。
+- **上升为**：检视经验库（新增「解码层按帧型校验必需字段」「key 拼错退化为缺字段的识别策略」两项检查点）；无新规则 / 无新裁决。
+- **来源**：用户 2026-11-24「decodeAndParse 修改这个函数」指令 + key 拼错帧实测实验 + 专项闭环验证 + 独立审核读盘复核。
+
 ## 4. 配置期已登记（非经验，供开工索引）
 
 - 用户明确：**不得自动修改 L1 契约层，契约变更必须给 diff 并等批准**（已固化于规则 01/04、SKILL.md §6）。

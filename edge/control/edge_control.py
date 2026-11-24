@@ -58,6 +58,24 @@ ACK_FRAME_TYPE: str = "recognize_ack"
 WIRE_REQUEST_ID_FIELD: str = WIRE_REQUEST_ID_KEY
 ## @brief 协议帧的清单键名
 WIRE_ITEMS_FIELD: str = "items"
+## @brief 清单条目的工具编号键；用于全未知帧判定
+ITEM_TOOL_ID_FIELD: str = "tool_id"
+## @brief 清单条目的告警类型键；用于全未知帧判定
+ITEM_ALERT_FIELD: str = "alert_type"
+## @brief 清单条目的置信度键；出帧前逐键规范化时使用
+ITEM_CONFIDENCE_FIELD: str = "confidence"
+## @brief 条目字段非法时的空工具编号
+EMPTY_TOOL_ID: str = ""
+## @brief 条目字段非法时的空置信度
+EMPTY_CONFIDENCE: float = 0.0
+## @brief 条目字段非法时按未知告警处理
+INVALID_ITEM_ALERT: str = "unknown"
+## @brief 合法告警类型五值全集，与协议枚举一致
+VALID_ALERT_TYPES: frozenset[str] = frozenset(
+    {"none", "misplaced", "unknown", "missing", "low_confidence"},
+)
+## @brief 全未知告警值；与识别模块 ALERT_UNKNOWN 同值
+ITEM_ALERT_UNKNOWN: str = "unknown"
 ## @brief 协议条目的货位号键名
 WIRE_POSITION_FIELD: str = "position"
 ## @brief 边缘内部字段，顶层帧里不得出现
@@ -216,6 +234,8 @@ class EdgeControl(BaseService, SignalSink, ICaptureSink, IRecognitionSink, IFram
         self._workerRequests: dict[int, str] = {}
         ## @brief 坏帧丢弃累计数，仅统计 FRAME_PARSE；供验收举证
         self._frameErrorCount: int = 0
+        ## @brief 全未知清单告警累计数，供运行期诊断识别退化
+        self._allUnknownCount: int = 0
 
     ## @brief 生命周期初始化：只初始化模块，不启采集/识别线程（D-02）
     #  @return 无
@@ -303,11 +323,6 @@ class EdgeControl(BaseService, SignalSink, ICaptureSink, IRecognitionSink, IFram
     #  @param signal 已解码信号帧
     #  @return 命中处理器返回 True
     def routeSignal(self, signal: DecodedSignal) -> bool:
-        with self._stateLock:
-            stopping = self._stopping
-        if stopping:
-            ## 停机中丢弃迟到信号，防止在途帧重启已停止的采集与识别
-            return True
         signalType = str(signal.get(SIGNAL_TYPE_KEY, ""))
         handler = self._asyncHandlers.get(signalType)
         if handler is None:
@@ -325,6 +340,10 @@ class EdgeControl(BaseService, SignalSink, ICaptureSink, IRecognitionSink, IFram
             self._logger.error(MODULE_NAME, "信号缺少请求标识，已丢弃")
             return True
         with self._stateLock:
+            ## 停机中丢弃迟到信号，防止在途帧重启已停止的采集与识别；
+            ## 与请求标识写入共用同一把锁，避免额外锁竞争改变请求到达时序
+            if self._stopping:
+                return True
             self._requestId = requestId
         ## 同一请求只处理一次：同一 request_id 只做一次扫描，重复请求直接复用上次应答
         if self.reuseCompletedAck(requestId):
@@ -541,6 +560,7 @@ class EdgeControl(BaseService, SignalSink, ICaptureSink, IRecognitionSink, IFram
             self._failedWorkers.pop(requestId, None)
             self._scanDeadlines.pop(requestId, None)
             template = self._ackTemplates.pop(requestId, None)
+            ## 在途重复请求次数：同一请求回同样内容的应答应答次数，满足"只回同一结果"
             seen = self._pendingRequests.pop(requestId, 0)
             merged, duplicates = self.mergeWorkerItems(workerItems)
             ## 失败线程的货位按未识别补齐，保证清单覆盖全部已登记货位
@@ -557,6 +577,8 @@ class EdgeControl(BaseService, SignalSink, ICaptureSink, IRecognitionSink, IFram
                     del self._completedAcks[next(iter(self._completedAcks))]
         for duplicate in duplicates:
             self._logger.error(MODULE_NAME, f"货位 {duplicate} 重复上报, 保留第一条")
+        ## 同一请求的重复上报次数决定应答帧数，各帧内容完全相同；
+        ## 满足"同一请求只回同一结果"，也满足上位机按 request_id 配对
         count = seen if seen > 0 else 1
         return [dict(frame) for _index in range(count)]
 
@@ -639,6 +661,33 @@ class EdgeControl(BaseService, SignalSink, ICaptureSink, IRecognitionSink, IFram
             mapped = self._workerRequests.get(workerId, "")
         return mapped or self.getRequestId()
 
+    ## @brief 规范化单条清单条目：缺字段或类型非法时按空值处理并记日志
+    #  @param rawItem 上游给出的条目
+    #  @return 恰好四键的合法条目
+    #  @note 不让脏条目原样上线被上位机整帧拒绝；单条非法不影响其它条目
+    def normalizeAckItem(self, rawItem: object) -> dict[str, object]:
+        source = rawItem if isinstance(rawItem, dict) else {}
+        item: dict[str, object] = {}
+        position = source.get(WIRE_POSITION_FIELD, "")
+        item[WIRE_POSITION_FIELD] = position if isinstance(position, str) and position else ""
+        toolId = source.get(ITEM_TOOL_ID_FIELD, EMPTY_TOOL_ID)
+        item[ITEM_TOOL_ID_FIELD] = toolId if isinstance(toolId, str) else EMPTY_TOOL_ID
+        confidence = source.get(ITEM_CONFIDENCE_FIELD, EMPTY_CONFIDENCE)
+        item[ITEM_CONFIDENCE_FIELD] = (
+            confidence if isinstance(confidence, (int, float))
+            and not isinstance(confidence, bool)
+            and 0.0 <= float(confidence) <= 1.0 else EMPTY_CONFIDENCE
+        )
+        alert = source.get(ITEM_ALERT_FIELD, INVALID_ITEM_ALERT)
+        item[ITEM_ALERT_FIELD] = alert if alert in VALID_ALERT_TYPES else INVALID_ITEM_ALERT
+        if set(source.keys()) != set(item.keys()) or any(
+            source.get(key) != item[key] for key in item
+        ):
+            self._logger.error(
+                MODULE_NAME, f"清单条目字段非法已按空值处理: {str(source)[:MAX_LOG_TEXT_CHARS]}",
+            )
+        return item
+
     ## @brief 取出应答帧里的清单条目
     #  @param ack 应答帧
     #  @return 清单条目列表
@@ -662,7 +711,7 @@ class EdgeControl(BaseService, SignalSink, ICaptureSink, IRecognitionSink, IFram
                     duplicates.append(position)
                     continue
                 seenPositions.add(position)
-                merged.append(rawItem)
+                merged.append(self.normalizeAckItem(rawItem))
         merged.sort(key=lambda entry: self.readItemPosition(entry))
         return merged, duplicates
 
@@ -688,7 +737,29 @@ class EdgeControl(BaseService, SignalSink, ICaptureSink, IRecognitionSink, IFram
         ## 边缘内部字段不得上线
         frame.pop(INTERNAL_WORKER_FIELD, None)
         frame.pop(INTERNAL_REQUEST_FIELD, None)
+        self.warnIfAllUnknown(items)
         return frame
+
+    ## @brief 整帧清单全为未知时记 error 并累计告警，防止识别退化被当成正常
+    #  @param items 合并后的清单条目
+    #  @return 无
+    #  @note 判定条件为"工具编号为空且告警为未知"，避免把真实空柜（告警为无告警）误报
+    def warnIfAllUnknown(self, items: list[object]) -> None:
+        if not items:
+            return
+        allUnknown = all(
+            isinstance(item, dict)
+            and item.get(ITEM_TOOL_ID_FIELD) == ""
+            and item.get(ITEM_ALERT_FIELD) == ITEM_ALERT_UNKNOWN
+            for item in items
+        )
+        if not allUnknown:
+            return
+        ## 调用方 buildAggregatedFrame 已在 _stateLock 内，此处不再加锁，避免重入死锁
+        self._allUnknownCount += 1
+        self._logger.error(
+            MODULE_NAME, f"整帧清单全为未识别 条目数={len(items)}，请检查相机/标定/权重",
+        )
 
     ## @brief 在途聚合表超限时丢弃最旧的请求
     #  @return 无
@@ -862,3 +933,9 @@ class EdgeControl(BaseService, SignalSink, ICaptureSink, IRecognitionSink, IFram
     def getFrameErrorCount(self) -> int:
         with self._stateLock:
             return self._frameErrorCount
+
+    ## @brief 返回全未知清单告警累计数，用于运行期诊断识别退化
+    #  @return 累计全未知告警数
+    def getAllUnknownCount(self) -> int:
+        with self._stateLock:
+            return self._allUnknownCount

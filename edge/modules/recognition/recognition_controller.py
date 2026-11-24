@@ -233,14 +233,6 @@ class RecognitionController(BaseService):
         with self._triggerLock:
             return dict(self._workers)
 
-    ## @brief 供验收举证查询指定 worker 是否运行中
-    #  @param workerId 工作线程编号
-    #  @return 运行中返回 True
-    def isWorkerBusy(self, workerId: int) -> bool:
-        with self._triggerLock:
-            worker = self._workers.get(workerId)
-        return worker is not None and worker.isRunning()
-
     ## @brief 供验收举证读取被丢弃的帧轮数
     #  @return 累计丢弃次数
     #  @note 计数在触发锁内累加，这里也在同一把锁里读，保证读到的是一轮完整累加后的值

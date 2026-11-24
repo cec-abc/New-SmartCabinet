@@ -10,10 +10,6 @@ from edge.interfaces.i_logger import ILogger
 ## @brief 应答排空线程：周期调用排空动作，把待发应答真正送出
 ## @author 袁燕
 
-## @brief 日志模块名
-MODULE_NAME: str = "EdgeDispatch"
-
-
 ## @brief 应答排空线程；只服务控制层，生命周期随控制层启停
 class EdgeDispatchThread(BaseThread):
     ## @brief 构造排空线程

@@ -146,7 +146,7 @@ python -m edge.main
 | `roi_binding_csv` | `./config/roi_binding.csv` | ROI 对照表路径 |
 | `require_roi_binding` | `false` | **是否强制装载 ROI 对照表**，见下一节 |
 | `aggregation_timeout_sec` | `5.0` | 一次全柜扫描的聚合等待上限，超时按降级出帧 |
-| `inference_backend` | `ultralytics` | 推理后端，`ultralytics` 或 `onnxruntime` |
+| `inference_backend` | `ultralytics` | 推理后端：`ultralytics` / `onnxruntime` / `rknn`；默认 ultralytics，换后端需重新标定 |
 | `nms_iou_threshold` | `0.45` | 同类别非极大值抑制的重叠阈值 |
 | `min_confidence` | `0.85` | 置信度门槛，单一来源；roi_binding.csv 每行 confidence 可覆盖 |
 
@@ -165,25 +165,15 @@ python -m edge.main
 
 > `camera_status` 一律如实上报。没打开的相机报 `offline`，不会为了让上位机放行开柜而报 `ok`。
 
-### 3.6 上位机主动下发两类指令，边缘机各有回应
+### 3.6 上位机下发的指令与边缘机回应
 
-上位机会主动往这条链路上发两种指令，边缘机都必须有回应，
+当前边缘机链路**只注册 `recognize_req` 一种下行请求**，收到即回 `recognize_ack`：
+一次请求只回一帧，清单覆盖全部已登记货位。
 **不回应的后果是上位机等满 3 秒 × 3 次重发后报超时**，界面上的功能等于不可用。
 
-| 上位机下发 | 边缘机回应 | 回应内容 |
-| --- | --- | --- |
-| `recognize_req` | `recognize_ack` | 一次请求**只回一帧**，清单覆盖全部已登记货位 |
-| `open_req` | `open_ack` | 目前固定回**失败**结果，`result=0`，原因写明 IO 板未接入 |
-
-`open_ack` 的字段是 `type` / `request_id` / `result` / `message` 四项，
-`request_id` 原样回带上位机发来的编号，`result` 为 1 表示柜体已真实打开。
-
-> **为什么开柜一律回失败**：开柜动作要靠 IO 板执行，IO 板硬件还没接入，
-> 边缘机拿不到"柜门真的开了"这个事实。回成功是骗人，回失败上位机会把
-> 真实原因直接弹给操作者；等 IO 板接入后，把这一处换成真实执行结果即可。
->
-> 开柜指令**不占用**识别请求的排队名额：它在链路层就地回应，
-> 不会因为等识别聚合而多吐出一帧识别应答。
+`open_req` / `open_ack` 尚未在边缘机链路中落地：未注册的信号只记一条日志、不回应。
+开柜与 IO 板状态由上位机侧处理，不在本软件的职责范围内。
+出网帧只有 `periodic` 与 `recognize_ack` 两种；`close_ack` 只是上位机可识别帧型白名单项，本软件不产生。
 
 ---
 
@@ -214,7 +204,7 @@ python -m edge.main
 | `RX` | `TcpRx` | 收到上位机下发的一整帧 | `edge/modules/tcp/tcp_decode_thread.py`：`recv` 到一整行、切帧并解析成功后记一条 |
 | `TX` | `TcpTx` | 发给上位机的一整帧 | `edge/modules/tcp/tcp_comm.py` 的 `encodeFrame`：帧编成出网字节时记一条 |
 
-- 周期帧（每 3 秒一帧 `periodic`）也是外部交互，会记 `TX`；它和 `recognize_ack`、`open_ack`、`close_ack` 都从 `encodeFrame` 这个唯一出网口出去，所以**一帧恰好一条 `TX`，不会重复**；入网一侧同理，一帧恰好一条 `RX`。
+- 周期帧（每 3 秒一帧 `periodic`）也是外部交互，会记 `TX`；它和 `recognize_ack` 都从 `encodeFrame` 这个唯一出网口出去，所以**一帧恰好一条 `TX`，不会重复**；入网一侧同理，一帧恰好一条 `RX`。
 - 帧型不被上位机识别、被出网守卫拦下时不记 `TX`，另有一条 `ERROR` 写明拦截原因；坏帧、空行在解码侧只记 `INFO`，不硬凑成 `RX`。
 - `payload` 里是**解析后的帧字典**，不是字节、不是十六进制，原样保留 `type` / `request_id` / `items` 等字段，另加 `frameBytes`（帧体字节数，不含行尾换行），便于排查帧大小。
 - 每行一条单行 JSON，帧体里没有裸换行；只有出错时才多一个 `stack` 字段。
@@ -243,13 +233,13 @@ python -m edge.main
 
 - 阈值 **4096 字节**，常量是 `edge/modules/tcp/tcp_comm.py` 的 `IO_LOG_FULL_FRAME_BYTES`，调用方也可注入 `threshold`。
 - `frameBytes` ≤ 阈值：`payload` 保留**帧的完整字段**；
-- `frameBytes` > 阈值：`payload` 只留摘要——`type` / `request_id` / `itemsCount`（清单条数）/ `itemsPreview`（前 3 条）/ `frameBytes` / `folded: true` / `note`（"清单已折叠，完整帧见出网守卫日志"），**不落完整清单**，但这条记录仍然是 `type: "TX"`，方向标识不丢。
+- `frameBytes` > 阈值：`payload` 只留摘要——`type` / `request_id` / `itemsCount`（清单条数）/ `itemsPreview`（前 3 条）/ `frameBytes` / `folded: true` / `note`（"清单已折叠，日志仅保留前若干条摘要"），**不落完整清单**，但这条记录仍然是 `type: "TX"`，方向标识不丢。
 - 100 货位的 `recognize_ack` 约 8KB，会触发折叠；周期帧每帧只有几百字节，保持全量记录。
 
 100 货位大帧折叠后的真实日志原文：
 
 ```
-{"type": "TX", "module": "TcpTx", "timestamp": "2026-11-14T22:45:36.757923", "day": "20261114", "payload": {"type": "recognize_ack", "request_id": "req-real-100", "itemsCount": 100, "itemsPreview": [{"position": "A-01-01", "tool_id": "C01-T0000", "confidence": 0.93, "alert_type": "none"}, {"position": "A-01-02", "tool_id": "C01-T0001", "confidence": 0.93, "alert_type": "none"}, {"position": "A-01-03", "tool_id": "C01-T0002", "confidence": 0.93, "alert_type": "none"}], "frameBytes": 8362, "folded": true, "note": "清单已折叠，完整帧见出网守卫日志"}}
+{"type": "TX", "module": "TcpTx", "timestamp": "2026-11-14T22:45:36.757923", "day": "20261114", "payload": {"type": "recognize_ack", "request_id": "req-real-100", "itemsCount": 100, "itemsPreview": [{"position": "A-01-01", "tool_id": "C01-T0000", "confidence": 0.93, "alert_type": "none"}, {"position": "A-01-02", "tool_id": "C01-T0001", "confidence": 0.93, "alert_type": "none"}, {"position": "A-01-03", "tool_id": "C01-T0002", "confidence": 0.93, "alert_type": "none"}], "frameBytes": 8362, "folded": true, "note": "清单已折叠，日志仅保留前若干条摘要"}}
 ```
 
 > `note` 里的"出网守卫日志"指 `TcpComm` 在出网口记的 `ERROR` 级日志（`单帧超安全阈值 ... 清单裁剪为 ...`、`上行帧型 ... 不被上位机识别`），以及上位机侧实际收到的完整帧。日志这边只留摘要，需要逐条核对清单时去这两处看。

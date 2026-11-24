@@ -114,10 +114,6 @@ SOFTWARE_VERSION: str = "edge-0.1.0"
 DEFAULT_DISPATCH_INTERVAL_SEC: float = 0.2
 ## @brief 采集门面构造参数名：对焦模式
 USB_FOCUS_MODE_PARAM: str = "focusMode"
-## @brief 采集门面构造参数名：焦点位置
-USB_FOCUS_POSITION_PARAM: str = "focusPosition"
-## @brief 采集门面构造参数名：相机路数
-USB_CAMERA_COUNT_PARAM: str = "cameraCount"
 ## @brief 采集门面构造器类型；是否接受扩展参数由构造签名探测决定
 UsbBuilder = Callable[..., UsbController]
 ## @brief 摄像头可达性探测的尝试次数
@@ -552,13 +548,6 @@ def buildUsbController(parts: AssemblyParts, sink: ICaptureSink,
         parts.cameraPairs, parts.captureDirs, sink, parts.logger,
         parts.rollThreshold, parts.usageRatio, parts.clock,
     )
-
-
-## @brief 探测采集门面是否已提供摄像头状态接口
-#  @param usb 采集门面
-#  @return 具备返回 True
-def usbHasCameraStatus(usb: UsbController) -> bool:
-    return hasattr(usb, "getCameraStatus")
 
 
 ## @brief 读取摄像头真实状态；状态取自采集门面的相机状态查询，不做硬编码

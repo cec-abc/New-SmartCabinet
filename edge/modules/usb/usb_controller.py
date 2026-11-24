@@ -146,7 +146,7 @@ class UsbController(BaseService):
         self._probeNextIndex: int = 0
         ## @brief 摄像头巡检线程；探测与采集启停共用同一把锁，避免并发操作设备
         self._probeThread: CameraProbeThread = CameraProbeThread(
-            len(self._cameraDevices), self._probeIfIdle, logger, probeIntervalSec,
+            self._probeIfIdle, logger, probeIntervalSec,
         )
 
     ## @brief 初始化：校验目录存在且可写、对焦模式合法，Fail-Fast 不引入能力降级
@@ -202,8 +202,7 @@ class UsbController(BaseService):
         self._probeStopping = False
         self._probeNextIndex = 0
         self._probeThread = CameraProbeThread(
-            len(self._cameraDevices), self._probeIfIdle, self._logger,
-            self._probeIntervalSec,
+            self._probeIfIdle, self._logger, self._probeIntervalSec,
         )
 
     ## @brief 采集空闲时巡检一路；检查与探测在同一把锁内完成，避免与采集启停竞态
@@ -379,16 +378,6 @@ class UsbController(BaseService):
             for event in self._focusDoneEvents:
                 event.set()
         self.reportFocusOutcome(notOpened, failures)
-
-    ## @brief 运行期切换对焦模式并立即生效
-    #  @param mode 对焦模式，auto 或 fixed
-    #  @return 无
-    #  @raises EdgeError 模式取值非法时抛出，code=CONFIG
-    def setFocusMode(self, mode: str) -> None:
-        if mode not in (FOCUS_MODE_AUTO, FOCUS_MODE_FIXED):
-            raise EdgeError(ErrorCode.CONFIG, f"对焦模式非法: {mode}")
-        self._focusMode = mode
-        self.applyFixedFocus()
 
     ## @brief 采集线程的相机就绪回调；全部线程就绪后统一下发对焦并汇总一条日志
     #  @param workerId 线程编号

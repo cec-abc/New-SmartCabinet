@@ -473,7 +473,8 @@ def test_class_item_map_takes_priority_over_single_marker() -> None:
         "滑板人偶", comboMap,
     )
     assert detected is True
-    assert confidence == 0.91
+    ## 组合识别取最低置信度，防止单项高分带过整组合
+    assert confidence == 0.83
 
     ## 组合查不到时退回单标志直映
     detected, confidence = matchMarker(
@@ -503,7 +504,8 @@ def test_combo_hit_ignores_other_classes() -> None:
         "mk_8822", comboMap,
     )
     assert detected is True
-    assert confidence == 0.90
+    ## 组合取最低；杂物类不参与匹配，不拉低结果
+    assert confidence == 0.85
 
     ## 只差红标签（缺必需 class），即便有杂物也不命中
     detected, _confidence = matchMarker(
@@ -532,10 +534,15 @@ def test_detections_in_roi_geometry() -> None:
     ## 几何判定单独核对
     assert isBoxFullyInsideRoi(boxOf(fully), row) is True
     assert isBoxFullyInsideRoi(boxOf(across), row) is False
-    ## 缺 box 的旧格式项兼容保留
-    assert detectionsInRoi([{"className": "hammer", "confidence": 0.90}], row) == [
-        {"className": "hammer", "confidence": 0.90},
-    ]
+    ## 缺 box 的旧格式项兼容保留（测试桩口径）
+    noBox = {"className": "hammer", "confidence": 0.90}
+    assert detectionsInRoi([noBox], row) == [noBox]
+    ## 生产口径：缺框一律拒识，不与正常框混排命中
+    assert detectionsInRoi([noBox], row, requireBox=True) == []
+    assert [d["className"] for d in detectionsInRoi([fully, noBox], row, requireBox=True)] == ["hammer"]
+    ## 坏框（非有限坐标）同样拒识
+    badBox = {"className": "hammer", "confidence": 0.90, "box": [float("nan"), 0, 1, 1]}
+    assert detectionsInRoi([badBox], row, requireBox=True) == []
 
 
 ## @brief 构造只带控制层的轻量边缘机，用于降级出帧形状校验

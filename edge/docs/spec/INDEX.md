@@ -121,5 +121,5 @@
 1. **权威**：上表 L1 两项与 `.codebuddy/rules/编码规范.mdc` 为裁决源；L2 图与源码只提供语义，不提供命名与接口定义。
 2. **命名**：旧图中的 snake_case（`getValue`、`route_signal`、`on_capture_success`、`send_frame` 等）一律按 NAMING_AUTHORITY 映射为 L1 的 camelCase；不改图、不改 L1。
 3. **图片**：PNG 文件名中的日期/哈希不承载语义；同一目录多张 PNG 是类图/流程图/时序图的迭代快照，一律不转录图中文字。
-4. **冲突**：图与 L1 冲突（自检分支、能力降级、非 UP 启线程、去重逻辑等）以 `.codebuddy/skills/edge-refactor/references/decisions.md` 的三条裁决与 L1 为准，并写入阶段 handoff。
+4. **冲突**：图与 L1 冲突（自检分支、能力降级、非 UP 启线程、去重逻辑等）以 `.codebuddy/skills/edge-refactor/references/decisions.md` 中已定裁决与 L1 为准，并写入阶段 handoff。
 5. **变更**：新增/删除 spec 资料后必须同步更新本索引，并在 handoff 记录；L1 契约层任何改动需先给 diff 并等用户批准。

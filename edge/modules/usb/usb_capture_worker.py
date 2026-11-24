@@ -29,8 +29,6 @@ EMPTY_FRAME_LOG_INTERVAL: int = 10
 EMPTY_FRAME_ERROR_THRESHOLD: int = 30
 ## @brief 单摄模式一组只有一路相机，帧元组长度为 1
 SINGLE_CAMERA_FRAME_COUNT: int = 1
-## @brief 双摄模式一组有左右两路相机，帧元组长度为 2
-DUAL_CAMERA_FRAME_COUNT: int = 2
 ## @brief 单摄落盘文件名里的方位标记
 SINGLE_FRAME_LABEL: str = "single"
 ## @brief 双摄左路落盘文件名里的方位标记

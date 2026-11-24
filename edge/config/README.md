@@ -30,7 +30,7 @@ roi_id,worker_id,drawer_id,position,tool_id,required_type,marker_id,confidence,r
 
 ### 1. marker_id 必须等于训练出的类别名
 
-匹配逻辑是类别名等值比较：ROI 区域里推理出的 `className` 与 `marker_id` 完全相同才算命中。
+匹配逻辑：单标志直映时按 `className` 与 `marker_id` 等值比较；配置了类别组合表（`class_item_map.csv`）时按组合包含判定——检测出的类别集合包含该标志对应的组合键即命中、允许出现其它类别，命中置信度取参与匹配各项的最小值（组合识别取最低置信度，防止单个高置信类别带过整组合）。
 因此 `marker_id` 填的不是工具编号、不是货位号，而是**该 ROI 内那个标志物在模型里的类别名**。
 样例里的 `mk_8821`、`mk_8822` 是占位值，**上板时必须替换成现场训练出的标志类别名**，否则该货位永远判未识别。
 
@@ -69,14 +69,14 @@ roi_id,worker_id,drawer_id,position,tool_id,required_type,marker_id,confidence,r
 | `recognition.require_roi_binding` | 装载不到对照表时是否启动即失败，见第四节 |
 | `recognition.infer_timeout_sec` | 单次推理超时上限 |
 | `recognition.aggregation_timeout_sec` | 一次全柜扫描的聚合等待上限，超时按降级出帧 |
-| `recognition.inference_backend` | 推理后端，`ultralytics` 或 `onnxruntime`，默认 `ultralytics` |
+| `recognition.inference_backend` | 推理后端，`ultralytics` / `onnxruntime` / `rknn`，默认 `ultralytics` |
 | `recognition.nms_iou_threshold` | 同类别非极大值抑制的重叠阈值，默认 0.45 |
 
 ## 四、启动期校验口径
 
 **对照表是识别的唯一事实来源**：识别只按本目录的 `roi_binding.csv` 装配，
 不从 `config.ini` 读取 `roi_config`、`class_item_map`、`roi_bind_map` 之类的查表字典；
-装配时传给识别门面的这三项固定为空字典。理由：两条推理后端产出的检测结果只有类别名与
+装配时传给识别门面的这三项固定为空字典。理由：当前三条推理后端产出的检测结果只有类别名与
 置信度，没有区域编号，按区域归集必然塌缩，查表只能得到清一色的未识别条目，
 看着像正常结果其实是故障。
 
@@ -98,8 +98,9 @@ roi_id,worker_id,drawer_id,position,tool_id,required_type,marker_id,confidence,r
 | --- | --- | --- |
 | `ultralytics` | `.pt` | 项目原实现路线，默认后端 |
 | `onnxruntime` | `.onnx` | 纯 onnx 权重直跑，输出上补做同类别非极大值抑制 |
+| `rknn` | `.rknn` | RK3588 板端 rknnlite NPU 推理；输出与 onnx 同源并补做 NMS；当前只支持单输出检测矩阵，需上板标定 |
 
-**换后端等于换结论**：两条后端的预处理口径（缩放方式）与类别映射尚未逐项对齐。
+**换后端等于换结论**：三条后端的预处理口径（缩放方式）与类别映射尚未逐项对齐。
 实测同一张样例图，ultralytics 出 6 条，onnxruntime 抑制前出 62 条、
 按 0.45 阈值抑制后出 8 条，差异来自缩放口径与低分误检，不是抑制阈值的问题。
 因此 `onnxruntime` 分支**未与 ultralytics 对齐，需现场标定**，

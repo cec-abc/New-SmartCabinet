@@ -47,6 +47,15 @@ MAX_RECV_BUFFER_BYTES: int = HOST_FRAME_MAX_BYTES
 ITEM_SEPARATOR_BYTES: int = 1
 ## @brief 请求标识最大字符数；超长 ID 会在日志与队列里被放大，按坏帧拒绝
 MAX_REQUEST_ID_CHARS: int = 128
+## @brief 上位机下发识别请求的帧型；解码层据此强制校验请求标识字段
+#  @note 该帧必须带 request_id 才能配对应答；key 拼错会让它变成"缺字段"，
+#        若不在解码层拦截，控制层只能笼统丢弃，坏帧统计也覆盖不到
+INBOUND_RECOGNIZE_REQ_TYPE: str = "recognize_req"
+## @brief 识别请求帧允许的键集合；协议规定恰为 type/request_id/timestamp 三字段
+#  @note 任何拼错或多余的键都按坏帧拒绝，并列出非法键名便于现场定位
+RECOGNIZE_REQ_ALLOWED_KEYS: frozenset[str] = frozenset(
+    {"type", "request_id", "timestamp"},
+)
 ## @brief 日志模块名
 MODULE_NAME: str = "TcpComm"
 ## @brief 接收方向日志的模块名
@@ -291,6 +300,35 @@ class TcpComm:
         if not isinstance(parsed, dict):
             raise EdgeError(ErrorCode.FRAME_PARSE, "帧根必须是对象而非数组或标量")
         requestId = parsed.get("request_id")
+        frameType = parsed.get("type")
+        if frameType == INBOUND_RECOGNIZE_REQ_TYPE:
+            ## 逐键校对：协议只允许 type/request_id/timestamp，任何拼错或多余键按坏帧拒绝，
+            ## 日志列出非法键名，现场一眼可见是哪个 key 写错
+            illegalKeys = sorted(
+                str(key) for key in parsed if key not in RECOGNIZE_REQ_ALLOWED_KEYS
+            )
+            if illegalKeys:
+                allowed = sorted(RECOGNIZE_REQ_ALLOWED_KEYS)
+                raise EdgeError(
+                    ErrorCode.FRAME_PARSE,
+                    f"识别请求含非法键 {illegalKeys}，允许键为 {allowed}",
+                )
+            ## 识别请求必须带非空字符串 request_id 才能配对应答
+            if not isinstance(requestId, str) or not requestId:
+                raise EdgeError(
+                    ErrorCode.FRAME_PARSE,
+                    "识别请求缺少请求标识 request_id（键名不符或为空）",
+                )
+            ## timestamp 若存在必须是数值，非法类型同样按坏帧拒绝
+            timestamp = parsed.get("timestamp")
+            ## bool 是 int 子类，显式排除，避免时间戳传 true 被当数值放行
+            if timestamp is not None and (
+                isinstance(timestamp, bool) or not isinstance(timestamp, (int, float))
+            ):
+                raise EdgeError(
+                    ErrorCode.FRAME_PARSE,
+                    f"识别请求时间戳必须为数值，实际为 {type(timestamp).__name__}",
+                )
         if requestId is not None:
             if not isinstance(requestId, str):
                 raise EdgeError(ErrorCode.FRAME_PARSE, "请求标识必须是字符串")

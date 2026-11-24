@@ -16,25 +16,20 @@ DEFAULT_PROBE_INTERVAL_SEC: float = 1.0
 ## @brief 摄像头周期巡检线程；采集空闲时每轮只探一路，错峰降低瞬时开销
 class CameraProbeThread(BaseThread):
     ## @brief 构造巡检线程
-    #  @param cameraCount 摄像头路数
     #  @param probeIfIdle 原子化的"空闲则探一路"回调；内部须与采集启停互斥
     #  @param logger 可选日志器
     #  @param probeIntervalSec 两轮巡检之间的等待秒数（构造注入）
     #  @return 无
     #  @note 不分别注入"判据+探测"两个回调：分开会在判据与探测之间留下竞态窗口，
     #        采集若在窗口内启动，巡检的 close 会释放 worker 刚打开的句柄
-    def __init__(self, cameraCount: int, probeIfIdle: Callable[[], None],
+    def __init__(self, probeIfIdle: Callable[[], None],
                  logger: ILogger | None = None,
                  probeIntervalSec: float = DEFAULT_PROBE_INTERVAL_SEC) -> None:
         super().__init__(name="CameraProbe", logger=logger)
-        ## @brief 摄像头路数
-        self._cameraCount: int = cameraCount
         ## @brief 原子化的空闲探测回调
         self._probeIfIdle: Callable[[], None] = probeIfIdle
         ## @brief 两轮巡检之间的等待秒数
         self._probeIntervalSec: float = probeIntervalSec
-        ## @brief 下一路待巡检的物理下标，逐路错峰
-        self._nextIndex: int = 0
 
     ## @brief 巡检主循环：每轮只探一路，采集在跑时跳过，等待可被停止打断
     #  @return 无

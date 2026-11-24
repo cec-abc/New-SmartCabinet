@@ -107,6 +107,8 @@ def buildProbeParts(hostPort: int) -> AssemblyParts:
     parts = defaultParts()
     engine = FakeMarkerEngine()
     parts.engine = engine
+    ## 桩引擎返回无框检测项，按测试桩口径关闭生产缺框拒识
+    parts.requireBox = False
     parts.cameraPairs = [
         (
             PlaceholderCameraDevice(f"left-{index + 1}"),

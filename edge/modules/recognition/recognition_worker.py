@@ -23,6 +23,7 @@ from edge.modules.recognition.recognition_utils import (
     TimeoutRunner,
     buildAck,
     buildRowItem,
+    canvasRoiMismatch,
     detectionsInRoi,
     matchMarker,
 )
@@ -173,6 +174,11 @@ class RecognitionWorker(BaseThread):
             self.logFailure(error)
             return [buildRowItem(row, False, 0.0) for row in rows]
         self.savePanoramaIfEnabled(panorama)
+        ## 尺寸护栏：坐标基准与真实全景明显错配时按未识别降级并记错，避免静默全空清单
+        mismatch = canvasRoiMismatch(stitcher.panoramaSize(panorama), rows)
+        if mismatch:
+            self.logFailure(EdgeError(ErrorCode.CAPTURE, mismatch))
+            return [buildRowItem(row, False, 0.0) for row in rows]
         try:
             detections = self.runInference(panorama)   # 全图推理一次，得到带框检测
         except EdgeError as error:

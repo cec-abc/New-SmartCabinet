@@ -64,6 +64,12 @@ class FrameStitcher(ABC):
     def crop(self, image: bytes, roi: RoiBindingRow) -> bytes:
         ...
 
+    ## @brief 读取全景像素尺寸；默认不支持时返回空，由实现覆写
+    #  @param image 拼接全景的图像字节
+    #  @return (宽, 高) 像素；无法解析时返回 None
+    def panoramaSize(self, image: bytes) -> tuple[int, int] | None:
+        return None
+
 
 ## @brief 图像处理库真实实现；库是可选依赖，只能在函数体内导入
 class Cv2FrameStitcher(FrameStitcher):
@@ -120,6 +126,18 @@ class Cv2FrameStitcher(FrameStitcher):
                 f"({roi.rectX1},{roi.rectY1})-({roi.rectX2},{roi.rectY2}), "
                 f"全景 {width}x{height}",
             )
+
+    ## @brief 读取全景像素尺寸；解码取数组形状，失败时返回空
+    #  @param image 拼接全景的图像字节
+    #  @return (宽, 高) 像素；无法解析时返回 None
+    def panoramaSize(self, image: bytes) -> tuple[int, int] | None:
+        try:
+            imageLibrary, arrayLibrary = self.loadImageLibraries()
+            array = self.decodeImage(imageLibrary, arrayLibrary, image)
+            height, width = array.shape[:2]
+        except (EdgeError, AttributeError, IndexError, TypeError):
+            return None
+        return int(width), int(height)
 
     ## @brief 载入图像处理库与数值计算库；两者都是可选依赖
     #  @return 图像处理库模块与数值计算库模块

@@ -61,14 +61,6 @@ class DetectionCandidate(NamedTuple):
     bottom: float
 
 
-## @brief CPU 占位推理；现场权重未就位时可显式注入
-#  @param image 图像字节
-#  @return 空结果列表
-def emptyInfer(image: FrameImage) -> list[DetectionItem]:
-    # TODO: 上板后按现场模型替换推理后端，保持纯函数入参出参不变
-    return []
-
-
 ## @brief YOLO 引擎；instance() 双检锁，普通构造仍可用于测试
 class YoloEngine(IRecognitionEngine):
     ## @brief 全局唯一实例

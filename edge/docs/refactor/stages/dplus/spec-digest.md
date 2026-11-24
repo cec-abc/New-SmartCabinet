@@ -244,13 +244,14 @@ roi_id,worker_id,drawer_id,position,tool_id,required_type,marker_id,confidence,r
 3. `items[]` 每项**恰好 4 个键**：`position`、`tool_id`、`confidence`、`alert_type`。
    **禁止**出现 `roiId` / `className` / `item` / `boundItem` / `workerId` / `requestId` 等 edge 内部字段。
 4. **items 必须覆盖 CSV 的全部行**，一行不漏（上位机要求"非在库货位 `tool_id` 置空但行不得省略"；空 `items` 会被上位机判覆盖不全）。
-5. `alert_type` 产出规则：
+5. `alert_type` 产出规则（组合识别取最低置信度；检测结果须带位置框，缺框按未识别）：
 
 | 情形 | `tool_id` | `confidence` | `alert_type` |
 | --- | --- | --- | --- |
-| 命中标志且置信度 ≥ 该行 `confidence` 下限 | CSV 的 `tool_id`（可为空串） | 实际检测置信度 | `none` |
-| 命中标志但置信度 < 下限 | CSV 的 `tool_id` | 实际检测置信度 | `low_confidence` |
+| 命中标志且置信度 ≥ 该行 `confidence` 下限 | CSV 的 `tool_id`（可为空串） | 实际检测置信度（组合取参与匹配各项最低值） | `none` |
+| 命中标志但置信度 < 下限 | CSV 的 `tool_id` | 实际检测置信度（组合取参与匹配各项最低值） | `low_confidence` |
 | 未命中标志 | `""`（空串） | `0.0` | `unknown` |
+| 检测项缺位置框（生产口径） | `""`（空串） | `0.0` | `unknown`（按未识别） |
 | CSV 行 `tool_id` 本身为空（该货位不登记工具） | `""` | 实际检测置信度（若命中） | `none` |
 
 6. `position` 在 items 内**不得重复**；CSV 内 `position` 重复 → `EdgeError(ErrorCode.CONFIG, ...)` Fail-Fast。
@@ -279,6 +280,6 @@ roi_id,worker_id,drawer_id,position,tool_id,required_type,marker_id,confidence,r
 
 原实现有"类别组合 → 物品名"表（`{"person,surfboard": "滑板人偶"}`，键按 `,` 拆分转 `frozenset`，顺序无关）。
 新设计主用 `marker_id` 单标志直映，**类别组合表降级为可选**：
-- 若存在 `edge/config/class_item_map.csv`（表头 `class_names,item_name`），则 ROI 内检测到的**类别集合**先折算成物品名再比对；
+- 若存在 `edge/config/class_item_map.csv`（表头 `class_names,item_name`），则 ROI 内检测到的**类别集合**先折算成物品名再比对；组合命中时置信度取参与匹配各项的**最低值**，防止单个高置信类别带过整组合；
 - 不存在则按单个 `marker_id` 直映。
 - 两者都不得影响 `items[]` 的 4 字段协议形状，只影响 `tool_id` 的取值判定。

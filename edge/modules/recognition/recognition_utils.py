@@ -39,8 +39,6 @@ TimeoutRunner = Callable[[Callable[[], list[DetectionItem]], float], list[Detect
 MERGE_SEPARATOR: bytes = b"||"
 ## @brief ROI 标记前缀
 ROI_MARKER: bytes = b"#ROI#"
-## @brief 查表未命中时的占位物品名；四键条目不产出该字段，保留供查表链路说明口径
-UNKNOWN_ITEM: str = "unknown"
 ## @brief 应答帧类型标识
 ACK_TYPE: str = "recognize_ack"
 ## @brief 协议帧的请求标识键名，上位机只认这个蛇形写法
@@ -63,9 +61,9 @@ ALERT_LOW_CONFIDENCE: str = "low_confidence"
 ALERT_UNKNOWN: str = "unknown"
 ## @brief 告警类型：放错货位
 ALERT_MISPLACED: str = "misplaced"
-## @brief 告警类型：登记的工具缺失
+## @brief 告警类型：登记工具缺失（协议五值枚举之一，供上位机告警字典使用）
 ALERT_MISSING: str = "missing"
-## @brief 上位机认可的告警类型五值，取自上位机告警枚举清单
+## @brief 协议认可的告警类型五值全集，与上位机告警字典一致
 ALERT_TYPE_VALUES: frozenset[str] = frozenset({
     ALERT_NONE, ALERT_LOW_CONFIDENCE, ALERT_UNKNOWN, ALERT_MISPLACED, ALERT_MISSING,
 })
@@ -206,7 +204,7 @@ def aggregateByRoi(detections: list[DetectionItem]) -> RoiGroups:
 ## @brief 折算区域内实际放着的物品名；类别组合查不到时返回空串
 #  @param detections 该区域内的检测结果
 #  @param classItemMap 类别到物品名映射
-#  @return 物品名与最高置信度
+#  @return 物品名与最低置信度
 def resolveActualItem(detections: list[DetectionItem],
                       classItemMap: ClassItemMap) -> tuple[str, float]:
     if not detections:
@@ -275,6 +273,27 @@ def buildConfigItem(position: str, expected: str, actual: str, confidence: float
     if confidence < confidenceThreshold:
         return buildAckItem(position, actual, confidence, ALERT_LOW_CONFIDENCE)
     return buildAckItem(position, actual, confidence, ALERT_NONE)
+
+
+## @brief 核对全景尺寸与货位对照表坐标基准是否错配
+#  @param canvas 全景 (宽, 高)；无法解析时跳过校验
+#  @param rows 货位对照表行，用于取矩形最大坐标
+#  @return 错配原因说明；一致或跳过时为空串
+#  @note 只识别"矩形超出画布"这一类确定错误：坐标超出全景说明基准必然错配。
+#        不判"画布远大于矩形"——局部 ROI、只标柜子一部分都是合法场景，
+#        误判会把正常货位全打成未识别。真正的修复仍是按真实全景重标坐标
+def canvasRoiMismatch(canvas: tuple[int, int] | None,
+                      rows: list[RoiBindingRow]) -> str:
+    if canvas is None or not rows:
+        return ""
+    width, height = canvas
+    maxX = max(row.rectX2 for row in rows)
+    maxY = max(row.rectY2 for row in rows)
+    if maxX > width or maxY > height:
+        return (
+            f"货位坐标 ({maxX},{maxY}) 超出全景 {width}x{height}，请按实际全景重标"
+        )
+    return ""
 
 
 ## @brief 判断区域里有没有命中标志，并给出命中时的置信度

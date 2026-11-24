@@ -107,7 +107,7 @@
 ### 阶段 d — 控制、装配与端到端
 
 - [ ] `d-1` 事件分发按注入的 `asyncHandlers` 键（门面不感知业务字符串）
-- [ ] `d-2` `EventCache` 按 `event_cache.enabled` 补发 / 丢弃；`seq` 只填不用
+- [x] `d-2` `EventCache` 按 `event_cache.enabled` 补发 / 丢弃（D-20 已删除整套机制，此项作废）；`seq` 只填不用
 - [ ] `d-3` 一键停机严格串行 `USB → 识别 → TCP → 日志`；进程锁生效
 - [ ] `d-4` Windows 端到端跑通
 
