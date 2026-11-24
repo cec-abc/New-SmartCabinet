@@ -33,6 +33,8 @@ DEFAULT_IMG_SIZE: int = 640
 BACKEND_ULTRALYTICS: str = "ultralytics"
 ## @brief 推理后端标识：onnxruntime，纯 onnx 权重直跑
 BACKEND_ONNXRUNTIME: str = "onnxruntime"
+## @brief 推理后端标识：rknn，RK3588 NPU 上跑 .rknn 量化权重
+BACKEND_RKNN: str = "rknn"
 ## @brief 默认推理后端；换后端等于换结论，默认固定为 ultralytics
 DEFAULT_BACKEND: str = BACKEND_ULTRALYTICS
 ## @brief 非极大值抑制的重叠阈值默认值，构造注入
@@ -231,6 +233,29 @@ class YoloEngine(IRecognitionEngine):
                     f"onnxruntime 后端只支持 onnx 权重: {path}",
                 )
             return framework.InferenceSession(path)
+        if self._backend == BACKEND_RKNN:
+            if not path.lower().endswith(".rknn"):
+                raise EdgeError(
+                    ErrorCode.CONFIG,
+                    f"rknn 后端只支持 rknn 权重: {path}",
+                )
+            try:
+                runtime = framework()
+                if runtime.load_rknn(path) != 0:
+                    raise EdgeError(
+                        ErrorCode.CONFIG, f"rknn 模型加载失败: {path}",
+                    )
+                if runtime.init_runtime() != 0:
+                    raise EdgeError(
+                        ErrorCode.CONFIG, f"rknn 运行时初始化失败: {path}",
+                    )
+            except EdgeError:
+                raise
+            except Exception as error:
+                raise EdgeError(
+                    ErrorCode.CONFIG, f"rknn 运行时准备失败: {error}",
+                ) from error
+            return runtime
         return framework.YOLO(path)
 
     ## @brief 载入推理框架；按配置选定的后端装载，缺框架直接判配置错误
@@ -253,6 +278,16 @@ class YoloEngine(IRecognitionEngine):
                     ErrorCode.CONFIG, "未安装推理框架 ultralytics",
                 ) from error
             return ultralytics
+        if self._backend == BACKEND_RKNN:
+            try:
+                ## 板端 runtime 是 rknnlite；PC 的 rknn toolkit 不能用于推理
+                from rknnlite.api import RKNNLite  # type: ignore
+            except ImportError as error:
+                raise EdgeError(
+                    ErrorCode.CONFIG,
+                    "未安装 RKNN 板端运行库 rknnlite（仅 RK3588 板端可用）",
+                ) from error
+            return RKNNLite
         raise EdgeError(ErrorCode.CONFIG, f"推理后端非法: {self._backend}")
 
     ## @brief 判定模型句柄属于哪个推理后端
@@ -261,6 +296,8 @@ class YoloEngine(IRecognitionEngine):
     def resolveFrameworkName(self, model: Any) -> str:
         if model is None:
             return ""
+        if hasattr(model, "inference") and hasattr(model, "load_rknn"):
+            return BACKEND_RKNN
         if hasattr(model, "get_inputs") and hasattr(model, "run"):
             return "onnxruntime"
         return "ultralytics"
@@ -276,9 +313,57 @@ class YoloEngine(IRecognitionEngine):
             frameworkName = self._frameworkName
         if model is None:
             return []
+        if frameworkName == BACKEND_RKNN:
+            return self.runRknnInference(image)
         if frameworkName == BACKEND_ONNXRUNTIME:
             return self.runOnnxInference(image)
         return self.runUltralyticsInference(image)
+
+    ## @brief 走 rknn 后端推理；输出布局与 onnx 同源，复用同一套候选框解析
+    #  @param image 图像字节
+    #  @return 检测结果列表
+    #  @raises EdgeError 推理失败时抛出，code=INFERENCE_TIMEOUT
+    #  @note RKNN 模型不携带类别名元数据，类别以编号代替；输出形状按模型导出口径，
+    #        需上板实测标定；检测框坐标按模型输入尺寸与全景尺寸比例还原
+    def runRknnInference(self, image: FrameImage) -> list[DetectionItem]:
+        imageLibrary, arrayLibrary = self.loadInferenceLibraries()
+        canvas = self.decodeForInference(image)
+        originalSize = getattr(canvas, "shape", None)
+        if originalSize is not None and len(originalSize) >= 2:
+            originalHeight, originalWidth = int(originalSize[0]), int(originalSize[1])
+        else:
+            fallbackSize = getattr(canvas, "size", None)
+            if fallbackSize is not None and len(fallbackSize) >= 2:
+                originalHeight, originalWidth = int(fallbackSize[1]), int(fallbackSize[0])
+            else:
+                originalHeight, originalWidth = DEFAULT_IMG_SIZE, DEFAULT_IMG_SIZE
+        ## RKNN 输入尺寸由导出时固定，统一用默认尺寸；如导出尺寸不同需改配置注入
+        width, height = DEFAULT_IMG_SIZE, DEFAULT_IMG_SIZE
+        scaleX = originalWidth / width if width > 0 else 1.0
+        scaleY = originalHeight / height if height > 0 else 1.0
+        resized = imageLibrary.resize(canvas, (width, height))
+        tensor = resized.astype(arrayLibrary.float32).transpose(2, 0, 1) / 255.0
+        batch = arrayLibrary.expand_dims(tensor, axis=0)
+        try:
+            outputs = self._model.inference(inputs=[batch])
+        except Exception as error:
+            raise EdgeError(
+                ErrorCode.INFERENCE_TIMEOUT, f"rknn 推理失败: {error}",
+            ) from error
+        if not outputs:
+            return []
+        ## 只接受单输出的 [N,4+C] / [4+C,N] 检测矩阵；
+        ## 多输出解耦头（如 yolov8n.rknn 的 3 stride × reg/cls/conf）不能套用，
+        ## 否则会把特征图当检测框解析出完全错误的清单，必须明确阻断而不是静默给错
+        if len(outputs) != 1:
+            raise EdgeError(
+                ErrorCode.INFERENCE_TIMEOUT,
+                f"rknn 模型为 {len(outputs)} 输出解耦头，当前只支持单输出检测矩阵，"
+                "请改用单输出 rknn 权重或上板补三尺度解码",
+            )
+        return self.parseOnnxOutput(
+            outputs[0], arrayLibrary, {}, scaleX, scaleY,
+        )
 
     ## @brief 走 ultralytics 后端推理
     #  @param image 图像字节

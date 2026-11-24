@@ -320,6 +320,14 @@
 - **上升为**：检视经验库（新增「设备状态需独立兜底探测」「巡检错峰降开销」「线程 stop 后重建」「TOCTOU 判据+动作须同锁」「派生标记防双调」五项检查点）；无新规则 / 无新裁决。
 - **来源**：用户 2026-11-23 "做周期检查、独立线程、注意性能" 指令 + 独立审核 Agent 两轮读盘复核 + 9 项专项验证。
 
+### L-35 ｜ 2026-11-23 ｜ 阶段 全模块整改（非编号阶段）
+
+- **触发**：走读"上位机识别请求→识别清单应答"链路，独立检视发现 A 级漏洞：`EdgeControl.routeSignal` 的 `try: handler(signal)` 只捕获 EdgeError，内置异常（IndexError/ValueError/RuntimeError）穿透到 TCP 解码线程（tcp_decode_thread.py:125 无 try）→ BaseThread.run 虽兜住但 runLoop 已退出 → 解码线程死亡、整条接收链失效。对照 recognition_worker/usb_capture_worker/base_thread 都是 EdgeError+Exception 成对兜底，唯此处漏。
+- **结论**：**业务分发入口必须 EdgeError + Exception 成对兜底**——注释说"不得上抛到解码线程"就要真的挡住所有异常，内置异常统一记日志并按同一降级路径出帧（正常路径 handler 调用与 return 不变，两 except 互斥不重复出帧）。另修 B6：`trimAggregations` 淘汰在途请求时只清了 3 个字典，漏了 `_failedWorkers`/`_pendingRequests`，导致被挤掉的请求残留字典、既收不到超时扫描又永不收口；补齐。注意区分语义：在途淘汰不碰 `_completedAcks`（已完成应答幂等记录属 completeWithEmptyAck 管理），不要为"字典集合相同"强行对齐。**教训：写注释引用其它函数名前必须 grep 磁盘确认——本轮曾把"六字典清理"误注成 reuseCompletedAck（实际在 completeWithEmptyAck），被独立审核抓出。**
+- **归属**：本轮 A1+B6 已收敛（307 测试全绿 + 专项验证 A1 内置异常出降级帧/后续请求可处理、B6 六字典清干净；独立审核 4 项通过含注释纠错）。B1~B8（request_id 并发错配/聚合竞态/断链丢帧策略等）未改，需逐项裁决。
+- **上升为**：检视经验库（新增「业务分发 EdgeError+Exception 成对兜底」「在途字典淘汰全清」「注释函数名核实」三项检查点）；无新规则 / 无新裁决。
+- **来源**：用户 2026-11-23「识别清单指令后逻辑走读 review 验证完善」指令 + 三 Agent 并行走读/检视/协议事实源 + 独立审核 Agent 读盘复核。
+
 ## 4. 配置期已登记（非经验，供开工索引）
 
 - 用户明确：**不得自动修改 L1 契约层，契约变更必须给 diff 并等批准**（已固化于规则 01/04、SKILL.md §6）。

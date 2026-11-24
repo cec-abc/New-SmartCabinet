@@ -299,6 +299,13 @@ class EdgeControl(BaseService, SignalSink, ICaptureSink, IRecognitionSink, IFram
                 exception=error,
             )
             self.enqueueDegradedFrame(requestId)
+        except Exception as error:
+            ## 处理器内的内置异常同样不得穿透到解码线程，统一按链路异常降级
+            self._logger.error(
+                MODULE_NAME, f"请求 {requestId} 处理出现未预期异常: {error}",
+                exception=error,
+            )
+            self.enqueueDegradedFrame(requestId)
         return True
 
     ## @brief 取出信号中的请求标识；协议原文 request_id 优先，取不到时改用内部 requestId
@@ -628,6 +635,11 @@ class EdgeControl(BaseService, SignalSink, ICaptureSink, IRecognitionSink, IFram
             del self._aggregations[oldest]
             self._ackTemplates.pop(oldest, None)
             self._scanDeadlines.pop(oldest, None)
+            ## 在途状态一并清掉：失败集合与在途计数不残留，
+            #  避免被挤掉的请求既收不到超时扫描又永不收口；
+            #  已完成应答的幂等记录属另一语义，由 completeWithEmptyAck 单独管理
+            self._failedWorkers.pop(oldest, None)
+            self._pendingRequests.pop(oldest, None)
 
     ## @brief 判断该请求是否已经回过应答
     #  @param requestId 请求标识
