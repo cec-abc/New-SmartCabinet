@@ -260,7 +260,8 @@ def test_loader_rejects_worker_id_out_of_base_range(tmp_path: Path) -> None:
 
 ## @brief 对应缺陷 2：onnxruntime 分支的同类别重叠框必须被抑制
 def test_onnx_backend_applies_non_maximum_suppression() -> None:
-    engine = YoloEngine(logger=FakeLogger(), nmsIouThreshold=DEFAULT_NMS_IOU_THRESHOLD)
+    engine = YoloEngine(logger=FakeLogger(), nmsIouThreshold=DEFAULT_NMS_IOU_THRESHOLD,
+                        confThreshold=0.25)
     ## 8 个目标：两个高度重叠、两个远处、一个低置信
     output = buildOnnxOutput([
         (100.0, 100.0, 40.0, 40.0, 0.90, 0.05),
@@ -286,7 +287,7 @@ def test_onnx_backend_applies_non_maximum_suppression() -> None:
 
 ## @brief 对应缺陷 2：抑制阈值是构造注入项，改阈值就改抑制口径
 def test_nms_threshold_is_injected() -> None:
-    engine = YoloEngine(logger=FakeLogger(), nmsIouThreshold=0.95)
+    engine = YoloEngine(logger=FakeLogger(), nmsIouThreshold=0.95, confThreshold=0.25)
     output = buildOnnxOutput([
         (100.0, 100.0, 40.0, 40.0, 0.90, 0.05),
         (105.0, 102.0, 40.0, 40.0, 0.85, 0.05),
@@ -329,11 +330,11 @@ def test_two_backends_output_count_within_tolerance() -> None:
     import onnxruntime  # type: ignore
 
     image = SAMPLE_IMAGE_PATH.read_bytes()
-    ultraEngine = YoloEngine(logger=FakeLogger())
+    ultraEngine = YoloEngine(logger=FakeLogger(), confThreshold=0.25, backend="ultralytics")
     ultraEngine.loadModel(str(WEIGHTS_DIR / "yolov8n.pt"))
     ultraItems = ultraEngine.infer(image)
 
-    onnxEngine = YoloEngine(logger=FakeLogger())
+    onnxEngine = YoloEngine(logger=FakeLogger(), confThreshold=0.25, backend="onnxruntime")
     onnxEngine._model = onnxruntime.InferenceSession(  # noqa: SLF001
         str(WEIGHTS_DIR / "yolov8n.onnx"),
     )

@@ -41,7 +41,8 @@ class TcpControlLayer(BaseService, SignalSink):
     def __init__(self, socket: ISocket, logger: ILogger | None, backoffSeq: list[float],
                  maxFrameSize: int, heartIntervalSec: float,
                  buildHeartbeat: Callable[[], dict[str, object]],
-                 upstreamSink: SignalSink | None = None) -> None:
+                 upstreamSink: SignalSink | None = None,
+                 safeFrameLimitBytes: int | None = None) -> None:
         ## @brief 注入的套接字
         self._socket: ISocket = socket
         ## @brief 注入的日志器
@@ -55,7 +56,7 @@ class TcpControlLayer(BaseService, SignalSink):
         ## @brief 心跳帧构造器（出网键名按协议原文）
         self._buildHeartbeat: Callable[[], dict[str, object]] = buildHeartbeat
         ## @brief 通信封装
-        self._comm: TcpComm = TcpComm(socket, maxFrameSize, logger)
+        self._comm: TcpComm = TcpComm(socket, maxFrameSize, logger, safeFrameLimitBytes)
         ## @brief 上游回调；类型由类级声明给出
         self._upstreamSink = upstreamSink
         ## @brief 链路状态，仅经 transitionTo 写入

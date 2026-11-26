@@ -423,12 +423,6 @@ class UsbController(BaseService):
             statuses.append(item)
         return statuses
 
-    ## @brief 自检预留空接口（裁决 D-01）；本轮不实现、不新增自检线程、不做能力降级
-    #  @return 无
-    def selfCheck(self) -> None:
-        # TODO: 自检逻辑后续实现时另起独立自检线程，不占用采集线程与主线程
-        return None
-
     ## @brief worker 成功回调：只做轻量转发，禁止在此执行阻塞 IO
     #  @param workerId 线程编号
     #  @param path 采集目录

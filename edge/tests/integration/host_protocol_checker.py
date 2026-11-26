@@ -65,7 +65,7 @@ MAX_FRAME_BYTES: int = 1024 * 1024
 ## @note 认不出的 type 落到 EdgeService.cpp:463-465 的"未知 type 丢弃并计数"：
 ##       上位机既拿不到应答，丢弃计数又被污染。
 HOST_RECOGNIZED_FRAME_TYPES: frozenset[str] = frozenset(
-    {"periodic", "recognize_ack", "close_ack"},
+    {"periodic", "recognize_ack"},
 )
 
 

@@ -74,8 +74,8 @@ def test_a1_inference_returns_fast_task() -> None:
     assert result == []
 
 
-## @brief A1-d：在途推理达上限时快速失败，不排队积压
-def test_a1_inference_gate_rejects_overflow() -> None:
+## @brief A1-d：在途推理达上限时排队等待，不拒绝新请求
+def test_a1_inference_gate_waits_when_full() -> None:
     import time
 
     from edge.app_init import INFERENCE_POOL_MAX_WORKERS
@@ -91,11 +91,12 @@ def test_a1_inference_gate_rejects_overflow() -> None:
         with pytest.raises(TimeoutError):
             directInference(slowTask, 0.02)
 
-    ## 闸门已满，下一次提交应立即失败，不排队
+    ## 闸门已满时下一次提交排队等待，直到超时而非立即拒绝
     started = time.monotonic()
-    with pytest.raises(TimeoutError, match="上限"):
-        directInference(lambda: [], 2.0)
-    assert time.monotonic() - started < 0.5
+    with pytest.raises(TimeoutError):
+        directInference(lambda: [], 0.02)
+    elapsed = time.monotonic() - started
+    assert elapsed >= 0.01, f"应排队等待而非立即拒绝，实际 {elapsed:.3f}s"
 
     ## 等待后台慢任务结束归还闸门，避免干扰后续用例
     time.sleep(0.6)

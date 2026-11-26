@@ -13,17 +13,8 @@ from edge.modules.recognition.recognition_worker import RecognitionWorker
 
 
 def test_confidence_threshold_single_source() -> None:
-    """置信度门槛的默认常量与装载器默认值同源，且 buildConfigItem 支持注入覆盖。"""
+    """置信度门槛默认常量与装载器默认值同源，不存在第二处字面量。"""
     assert ru.DEFAULT_CONFIDENCE_THRESHOLD == DEFAULT_CONFIDENCE == 0.85
-
-    # 默认口径：0.80 低于 0.85 → 低置信度
-    item_default = ru.buildConfigItem("A-01-01", "扳手", "扳手", 0.80)
-    assert item_default["alert_type"] == ru.ALERT_LOW_CONFIDENCE
-
-    # 注入更低的门槛 0.70 → 同样 0.80 判为正常
-    item_injected = ru.buildConfigItem("A-01-01", "扳手", "扳手", 0.80,
-                                       confidenceThreshold=0.70)
-    assert item_injected["alert_type"] == ru.ALERT_NONE
 
 
 def test_panorama_roll_deletes_oldest(tmp_path: Path) -> None:

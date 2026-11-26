@@ -156,18 +156,6 @@ def test_c4_1_init_fails_fast_on_missing_dir(tmp_path: Path) -> None:
         assert error.code == ErrorCode.CONFIG
 
 
-## @brief c4-1 / D-01 自检只留空接口：不启线程、不做 IO、不做能力降级
-def test_c4_1_selfcheck_stub_d01(tmp_path: Path) -> None:
-    pairs: list[tuple[ICameraDevice, ICameraDevice]] = [
-        (FakeCameraDevice(), FakeCameraDevice())
-    ]
-    controller = makeController(pairs, [tmp_path], FakeCaptureSink())
-    ## selfCheck() 返回 None，按 L-04 不作为值断言，改验无状态副作用
-    controller.selfCheck()
-    assert controller.getWorkers() == []
-    assert not controller.isCapturing()
-
-
 ## @brief c4-2 双路取图落盘：左右帧分别写入专属目录并关闭句柄
 def test_c4_2_dual_frames_saved(tmp_path: Path) -> None:
     left = FakeCameraDevice(b"LEFT-BYTES")

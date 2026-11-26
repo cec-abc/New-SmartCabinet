@@ -22,12 +22,10 @@ from edge.modules.recognition.recognition_utils import (
     RoiBindMap,
     RoiConfig,
     TimeoutRunner,
-    aggregateByRoi,
     buildAck,
     cropAndMerge,
     drawRoi,
     roiIdOf,
-    validateByTable,
 )
 from edge.modules.recognition.recognition_yolo_engine import YoloEngine
 from edge.tests.fakes.fake_logger import FakeLogger
@@ -171,16 +169,10 @@ def makeController(
     )
 
 
-## @brief 对应缺陷 1：检测结果缺区域编号时按 None 显式暴露，不静默塌缩成空组
+## @brief 检测结果缺区域编号时按 None 显式暴露，不静默塌缩
 def test_c5_3_missing_roi_id_is_not_swallowed() -> None:
     assert roiIdOf({"className": "tool", "confidence": 0.9}) is None
     assert roiIdOf({"roiId": "r1", "className": "tool"}) == "r1"
-
-    try:
-        aggregateByRoi([{"className": "tool", "confidence": 0.9}])
-        raise AssertionError("缺区域编号的结果应抛 EdgeError(CONFIG)")
-    except EdgeError as error:
-        assert error.code == ErrorCode.CONFIG
 
 
 ## @brief 对应缺陷 1：按 ROI 配置识别的备用链路不可用，明确报配置错误且不产出误导条目
@@ -382,17 +374,9 @@ def test_c5_3_pure_functions_behavior() -> None:
     assert merged == b"L||R"
     assert drawRoi(merged, {"r1": 1}) == b"L||R#ROI#r1=1"
 
-    items: list[DetectionItem] = [
-        {"roiId": "r1", "className": "tool", "confidence": 0.93},
-        {"roiId": "r1", "className": "ghost", "confidence": 0.71},
-        {"roiId": "r2", "className": "tool", "confidence": 0.88},
+    ackItems = [
+        {"position": "A-01-01", "tool": "扳手", "confidence": 0.93, "alert_type": "none"},
     ]
-    groups = aggregateByRoi(items)
-    assert sorted(groups) == ["r1", "r2"]
-    assert len(groups["r1"]) == 2
-    ackItems, misses = validateByTable(groups, CLASS_ITEM_MAP, ROI_BIND_MAP, ROI_CONFIG)
-    assert misses == ["r1/ghost"]
-    assert len(ackItems) == 2
     assert buildAck("req-9", ackItems) == {
         "type": "recognize_ack", "request_id": "req-9",
         "items": ackItems,
@@ -439,7 +423,7 @@ def test_c5_4_pure_functions_only_in_utils_and_no_cross_module_import() -> None:
 
     utilsSource = sources["recognition_utils.py"]
     for pureName in (
-        "cropAndMerge", "drawRoi", "aggregateByRoi", "validateByTable", "buildAck",
+        "cropAndMerge", "drawRoi", "buildAck",
     ):
         assert f"def {pureName}" in utilsSource
         assert f"def {pureName}" not in sources["recognition_worker.py"]

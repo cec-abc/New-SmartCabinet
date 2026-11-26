@@ -72,7 +72,7 @@ def testConfigIniIsUtf8AndReadableWithChineseComments() -> None:
     assert parser.sections() == ["log", "tcp", "usb", "recognition"]
     assert parser.get("tcp", "port") == "9000"
     assert parser.get("usb", "camera_indices") == "1,2,3,4,5,6,7,8"
-    assert parser.get("recognition", "require_roi_binding") == "false"
+    assert parser.get("recognition", "require_roi_binding") == "true"
     # 文件里含中文注释，能按 UTF-8 解码即证明编码口径正确
     assert "#" in INI_PATH.read_text(encoding="utf-8")
 
@@ -104,7 +104,7 @@ def testEveryReadmeKeyExistsInConfigIni() -> None:
         "tcp.max_frame_size", "tcp.backoff_seq", "tcp.heart_interval_sec",
         "log.dir", "log.max_file_size", "log.mode", "log.disk_free_threshold",
         "log.queue_poll_sec", "usb.roll_threshold", "usb.camera_indices",
-        "usb.capture_mode", "usb.frame_source", "usb.focus_mode",
+        "usb.capture_mode", "usb.focus_mode",
         "usb.focus_positions", "usb.zoom_positions", "usb.focus_stable_ms",
         "recognition.model_path", "recognition.infer_timeout_sec",
         "recognition.roi_binding_csv", "recognition.require_roi_binding",
@@ -138,8 +138,7 @@ def testSiteDefaultsStayUnchanged() -> None:
     ini = readIniPairs()
     assert ini["usb.camera_indices"] == "1,2,3,4,5,6,7,8"
     assert ini["usb.capture_mode"] == "auto"
-    assert ini["usb.frame_source"] == "camera"
-    assert ini["recognition.require_roi_binding"] == "false"
+    assert ini["recognition.require_roi_binding"] == "true"
 
 
 ## @brief ROI 对照表表头恰好十二列，顺序与配置说明一致

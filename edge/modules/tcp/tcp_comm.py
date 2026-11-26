@@ -11,15 +11,10 @@ from edge.interfaces.i_socket import ISocket
 ## @brief TCP 底层通信封装：组帧、切帧、收发与出网守卫
 ## @author 袁燕
 
-## @brief 上位机能识别的上行帧型全集
-## @note 本软件主动发出的只有 periodic 与 recognize_ack 两种；
-##       close_ack 是下位机的关柜帧，列入全集仅为对齐上位机可识别帧型，本软件不产生。
-##       上位机 EdgeService.cpp:362-465 的分发只认这些 type；
-##       认不出的 type 落到 :463-465 的"未知 type 丢弃并计数"，
-##       上位机既拿不到应答，丢弃计数又被污染。
-##       出网字节只从这里出去，所以在出网口设闸最稳妥。
+## @brief 上位机能识别的上行帧型全集；本软件只发 periodic 与 recognize_ack
+## @note 出网字节只从这里出去，所以在出网口设闸，防止未知帧型污染上位机丢弃计数。
 HOST_RECOGNIZED_FRAME_TYPES: frozenset[str] = frozenset(
-    {"periodic", "recognize_ack", "close_ack"},
+    {"periodic", "recognize_ack"},
 )
 ## @brief 链路就绪状态取值；心跳线程与门面共用，避免各处写死同一个字符串
 LINK_UP: str = "UP"
@@ -115,18 +110,23 @@ class TcpComm:
     #  @param socket 套接字实现（注入）
     #  @param maxFrameSize 单帧字节上限，构造注入，禁止读取配置
     #  @param logger 可选日志器
+    #  @param safeFrameLimitBytes 出网单帧安全阈值字节数；为空时按配置上限的一半派生
     #  @return 无
-    def __init__(self, socket: ISocket, maxFrameSize: int, logger: ILogger | None = None) -> None:
+    def __init__(self, socket: ISocket, maxFrameSize: int, logger: ILogger | None = None,
+                 safeFrameLimitBytes: int | None = None) -> None:
         ## @brief 注入的套接字
         self._socket: ISocket = socket
         ## @brief 单帧字节上限，由上层构造注入
         self._maxFrameSize: int = maxFrameSize
         ## @brief 注入的日志器
         self._logger: ILogger | None = logger
-        ## @brief 出网单帧安全阈值：配置上限的一半，且不超过上位机硬上限的一半
-        self._safeFrameLimit: int = min(
-            max(MIN_SAFE_FRAME_LIMIT_BYTES, int(maxFrameSize * SAFE_FRAME_LIMIT_RATIO)),
-            HOST_SAFE_FRAME_LIMIT_BYTES,
+        ## @brief 出网单帧安全阈值：优先取配置注入值，缺省时按配置上限派生且不越上位机硬顶
+        self._safeFrameLimit: int = (
+            safeFrameLimitBytes if safeFrameLimitBytes is not None
+            else min(
+                max(MIN_SAFE_FRAME_LIMIT_BYTES, int(maxFrameSize * SAFE_FRAME_LIMIT_RATIO)),
+                HOST_SAFE_FRAME_LIMIT_BYTES,
+            )
         )
 
     ## @brief 发送原始字节，失败由返回值表达

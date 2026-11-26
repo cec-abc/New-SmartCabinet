@@ -93,6 +93,7 @@ python -m edge.main
 | `connect_timeout_sec` | `5.0` | 连上位机的超时秒数，超时按退避序列重连 |
 | `recv_timeout_sec` | `0.5` | 单次收包超时秒数。超时是正常轮询节拍，不算断链 |
 | `max_frame_size` | `1048576` | 单帧字节上限，超限的坏帧丢弃并记日志 |
+| `safe_frame_limit_bytes` | `524288` | 出网单帧安全阈值字节数，只裁剪清单不触发断链 |
 | `backoff_seq` | `1,2,4,8,16,30` | 断链重连退避序列，单位秒 |
 | `heart_interval_sec` | `3` | **周期帧发送间隔**，默认 3 秒 |
 
@@ -115,8 +116,7 @@ python -m edge.main
 | `camera_indices` | `1,2,3,4,5,6,7,8` | 相机索引列表，**顺序即物理编号**，左路在前右路在后 |
 | `capture_mode` | `auto` | 采集模式：`auto` 按 `camera_indices` 个数自动判（1 路单摄不拼接、偶数路双摄两两拼接、奇数路 ≥3 报错）；`single` 强制单摄，每个索引各成一组；`dual` 强制双摄，要求偶数且至少 2 路 |
 | `layer_mode` | `multi` | 分组方式：`multi` 按 `camera_indices` 实际路数分组（8 路 = 4 个 worker）；`single` 只取前 2 路 = 1 个 worker，供单层工装测试 |
-| `frame_source` | `camera` | 帧来源：`camera` 用真实相机抓帧并编码成 JPEG；`placeholder` 用占位图，不碰相机，无相机或没装图像处理库时兜底 |
-| `save_frames` | `false` | 采集帧是否逐路落盘：生产口径 `false`（只走内存回调、不写图）；调试期设 `true` 存单图。关闭时不要求采集目录存在。旧配置若没有此键，按开启处理以保持原行为 |
+| `save_frames` | `false` | 采集帧是否逐路落盘：生产口径 `false`（只走内存回调、不写图）；调试期设 `true` 存单图。关闭时不要求采集目录存在。旧配置若没有此键，按关闭处理（生产口径） |
 | `focus_mode` | `fixed` | `fixed` 锁定焦点，`auto` 自动对焦。**在相机打开成功之后下发**，见下方说明 |
 | `focus_positions` | `0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0` | 8 路逐路焦点值，按 CAM1~CAM8 顺序、逗号隔开，**第 N 个值对应 CAM N**。填 1 个值表示 8 路共用；单位设备绝对值（上限 125），用 `lab/manual_focus_test.py --device N` 逐路实测 |
 | `zoom_positions` | `0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0` | 8 路逐路变焦值，顺序与下标规则同上；上限 1020，同样逐路实测 |
@@ -141,12 +141,12 @@ python -m edge.main
 | --- | --- | --- |
 | `save_dirs` | `./output/recog/w1..w4` | 4 组识别线程各自的目录，程序自动创建 |
 | `save_panorama` | `false` | 是否存拼接后的全景大图：生产口径 `false`（只在内存识别、不写图）；调试标定设 `true`，把每组全景写进对应识别目录，供人工标 ROI |
-| `model_path` | `./weights/yolov8n.pt` | 模型权重路径 |
+| `model_path` | `./weights/yolov8n.rknn` | 模型权重路径（正式交付为 RKNN 量化权重） |
 | `infer_timeout_sec` | `3.0` | 单次推理超时上限 |
 | `roi_binding_csv` | `./config/roi_binding.csv` | ROI 对照表路径 |
-| `require_roi_binding` | `false` | **是否强制装载 ROI 对照表**，见下一节 |
+| `require_roi_binding` | `true` | **是否强制装载 ROI 对照表**，见下一节 |
 | `aggregation_timeout_sec` | `5.0` | 一次全柜扫描的聚合等待上限，超时按降级出帧 |
-| `inference_backend` | `ultralytics` | 推理后端：`ultralytics` / `onnxruntime` / `rknn`；默认 ultralytics，换后端需重新标定 |
+| `inference_backend` | `rknn` | 推理后端；正式交付固定 RKNN，换后端需重新标定 |
 | `nms_iou_threshold` | `0.45` | 同类别非极大值抑制的重叠阈值 |
 | `min_confidence` | `0.85` | 置信度门槛，单一来源；roi_binding.csv 每行 confidence 可覆盖 |
 
@@ -173,7 +173,7 @@ python -m edge.main
 
 `open_req` / `open_ack` 尚未在边缘机链路中落地：未注册的信号只记一条日志、不回应。
 开柜与 IO 板状态由上位机侧处理，不在本软件的职责范围内。
-出网帧只有 `periodic` 与 `recognize_ack` 两种；`close_ack` 只是上位机可识别帧型白名单项，本软件不产生。
+出网帧只有 `periodic` 与 `recognize_ack` 两种。
 
 ---
 
@@ -310,13 +310,12 @@ python -m edge.tests.integration.watch_periodic [端口] [观察时长秒] [req]
 **第一步：只改这一行**
 
 打开 `edge/config/config.ini`，把 `[usb]` 段的 `camera_indices` 改成 `0`
-（内置摄像头通常是索引 0），`capture_mode` 和 `frame_source` 保持现场值不用动：
+（内置摄像头通常是索引 0），`capture_mode` 保持现场值不用动：
 
 ```ini
 [usb]
 camera_indices = 0
 capture_mode = auto
-frame_source = camera
 ```
 
 `capture_mode = auto` 看到只有 1 路，会自动进**单摄模式**：这一帧不拼接、不裁半幅，
@@ -327,14 +326,7 @@ frame_source = camera
 `camera_status` 只报 1 路 `CAM1`，如实上报，不为了凑满 8 路而虚报：
 相机打开成功就是 `ok`，没打开就是 `offline`。周期帧仍是每 3 秒一帧，其余字段和 8 路时一样。
 
-**第三步：两种帧来源怎么选**
-
-| `frame_source` | 行为 | 什么时候用 |
-| --- | --- | --- |
-| `camera` | 用 `VideoCapture` 真抓一帧，编码成 JPEG 落盘 | 接了相机、要验证真实取图与落盘 |
-| `placeholder` | 用占位图，不碰相机、不需要图像处理库 | 没接相机、跑测试、或机器上没装图像处理库时兜底 |
-
-**第四步：ROI 四角点要对得上**
+**第三步：ROI 四角点要对得上**
 
 `edge/config/roi_binding.csv` 里的四角点样例是按 **640×480** 标定的
 （`rect_x2` 最大 640、`rect_y2` 最大 480）。单摄不拼接，全景就是这一帧原图，

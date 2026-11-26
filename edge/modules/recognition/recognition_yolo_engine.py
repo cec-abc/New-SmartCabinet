@@ -9,6 +9,7 @@ from typing import Any, NamedTuple
 
 from edge.exceptions import EdgeError, ErrorCode
 from edge.infra.roi_binding_loader import (
+    DEFAULT_CONFIDENCE,
     DETECTION_BOX_FIELD,
     DETECTION_CLASS_FIELD,
     DETECTION_CONFIDENCE_FIELD,
@@ -25,8 +26,8 @@ from edge.interfaces.i_recognition_engine import DetectionItem, IRecognitionEngi
 InferFunc = Callable[[FrameImage], list[DetectionItem]]
 ## @brief 日志模块名
 MODULE_NAME: str = "YoloEngine"
-## @brief 推理默认置信度门槛
-DEFAULT_CONF_THRESHOLD: float = 0.25
+## @brief 推理默认置信度门槛；与配置单一来源同源，不再保留第二处字面量
+DEFAULT_CONF_THRESHOLD: float = DEFAULT_CONFIDENCE
 ## @brief 推理默认输入尺寸长边，单位像素
 DEFAULT_IMG_SIZE: int = 640
 ## @brief 推理后端标识：ultralytics，走 pt 权重
@@ -35,8 +36,8 @@ BACKEND_ULTRALYTICS: str = "ultralytics"
 BACKEND_ONNXRUNTIME: str = "onnxruntime"
 ## @brief 推理后端标识：rknn，RK3588 NPU 上跑 .rknn 量化权重
 BACKEND_RKNN: str = "rknn"
-## @brief 默认推理后端；换后端等于换结论，默认固定为 ultralytics
-DEFAULT_BACKEND: str = BACKEND_ULTRALYTICS
+## @brief 默认推理后端；换后端等于换结论，正式交付默认固定为 RKNN
+DEFAULT_BACKEND: str = BACKEND_RKNN
 ## @brief 非极大值抑制的重叠阈值默认值，构造注入
 DEFAULT_NMS_IOU_THRESHOLD: float = 0.45
 ## @brief onnxruntime 分支与 ultralytics 分端口径尚未统一的说明，写进日志避免误以为两者等价
@@ -73,11 +74,13 @@ class YoloEngine(IRecognitionEngine):
     #  @param logger 可选日志器
     #  @param backend 推理后端标识，ultralytics 或 onnxruntime
     #  @param nmsIouThreshold 非极大值抑制的重叠阈值
+    #  @param confThreshold 推理置信度门槛，默认取配置单一来源
     #  @return 无
     def __init__(self, inferFunc: InferFunc | None = None,
                  logger: ILogger | None = None,
                  backend: str = DEFAULT_BACKEND,
-                 nmsIouThreshold: float = DEFAULT_NMS_IOU_THRESHOLD) -> None:
+                 nmsIouThreshold: float = DEFAULT_NMS_IOU_THRESHOLD,
+                 confThreshold: float = DEFAULT_CONF_THRESHOLD) -> None:
         ## @brief 保护模型加载状态与后端配置的状态锁
         self._stateLock: Lock = Lock()
         ## @brief 注入的推理函数
@@ -96,6 +99,8 @@ class YoloEngine(IRecognitionEngine):
         self._backend: str = backend
         ## @brief 非极大值抑制的重叠阈值
         self._nmsIouThreshold: float = nmsIouThreshold
+        ## @brief 推理置信度门槛（配置单一来源注入）
+        self._confThreshold: float = confThreshold
 
     ## @brief 取全局唯一实例；双检锁避免并发重复构造
     #  @param logger 可选日志器，首次构造与后续补挂都生效
@@ -107,7 +112,8 @@ class YoloEngine(IRecognitionEngine):
     @classmethod
     def instance(cls, logger: ILogger | None = None,
                  backend: str = DEFAULT_BACKEND,
-                 nmsIouThreshold: float = DEFAULT_NMS_IOU_THRESHOLD) -> YoloEngine:
+                 nmsIouThreshold: float = DEFAULT_NMS_IOU_THRESHOLD,
+                 confThreshold: float = DEFAULT_CONF_THRESHOLD) -> YoloEngine:
         shared = cls._shared
         if shared is None:
             with cls._sharedLock:
@@ -116,6 +122,7 @@ class YoloEngine(IRecognitionEngine):
                     shared = cls(
                         logger=logger, backend=backend,
                         nmsIouThreshold=nmsIouThreshold,
+                        confThreshold=confThreshold,
                     )
                     cls._shared = shared
         with cls._sharedLock:
@@ -125,6 +132,8 @@ class YoloEngine(IRecognitionEngine):
                 shared.setBackend(backend)
             if shared.getNmsIouThreshold() != nmsIouThreshold:
                 shared.setNmsIouThreshold(nmsIouThreshold)
+            if shared.getConfThreshold() != confThreshold:
+                shared.setConfThreshold(confThreshold)
         return shared
 
     ## @brief 挂载日志器
@@ -165,6 +174,22 @@ class YoloEngine(IRecognitionEngine):
     def getNmsIouThreshold(self) -> float:
         with self._stateLock:
             return self._nmsIouThreshold
+
+    ## @brief 设置推理置信度门槛；模型已加载后不允许改，避免前后结论不一致
+    #  @param threshold 置信度门槛
+    #  @return 无
+    #  @raises EdgeError 模型已加载时抛出，code=CONFIG
+    def setConfThreshold(self, threshold: float) -> None:
+        with self._stateLock:
+            if self._modelLoaded:
+                raise EdgeError(ErrorCode.CONFIG, "模型已加载, 不允许改置信度门槛")
+            self._confThreshold = threshold
+
+    ## @brief 供验收举证读取当前推理置信度门槛
+    #  @return 置信度门槛
+    def getConfThreshold(self) -> float:
+        with self._stateLock:
+            return self._confThreshold
 
     ## @brief 加载模型，同一实例仅生效一次
     #  @param path 模型路径
@@ -365,7 +390,7 @@ class YoloEngine(IRecognitionEngine):
         try:
             results = self._model.predict(
                 self.decodeForInference(image),
-                conf=DEFAULT_CONF_THRESHOLD,
+                conf=self._confThreshold,
                 imgsz=DEFAULT_IMG_SIZE,
                 verbose=False,
             )
@@ -495,7 +520,7 @@ class YoloEngine(IRecognitionEngine):
             scores = data[index, 4:columns]
             classId = int(arrayLibrary.argmax(scores))
             confidence = float(scores[classId])
-            if confidence < DEFAULT_CONF_THRESHOLD:
+            if confidence < self._confThreshold:
                 continue
             candidates.append(self.buildCandidate(data, index, classId, confidence))
         return candidates

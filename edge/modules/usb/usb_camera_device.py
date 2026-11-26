@@ -37,10 +37,6 @@ IMAGE_LIBRARY_LOG_LEVEL_SILENT: int = 0
 CAMERA_OPEN_LOCK: Lock = Lock()
 ## @brief 帧来源：真实相机，open 时建采集句柄，readFrame 真取帧并编码
 FRAME_SOURCE_CAMERA: str = "camera"
-## @brief 帧来源：占位图，走注入的帧读取器，不碰硬件
-FRAME_SOURCE_PLACEHOLDER: str = "placeholder"
-## @brief 合法帧来源取值
-FRAME_SOURCES: tuple[str, ...] = (FRAME_SOURCE_CAMERA, FRAME_SOURCE_PLACEHOLDER)
 ## @brief 真实抓帧的 JPEG 编码后缀
 JPEG_EXTENSION: str = ".jpg"
 ## @brief 真实取图重试次数：设备刚起流时首帧可能未就绪
@@ -101,23 +97,23 @@ class CameraDevice(ICameraDevice, ICameraFocus):
     ## @brief 构造设备
     #  @param deviceAddr 设备地址：Windows 写索引、Linux 写 /dev/... 固定路径
     #  @param backend 后端标识
-    #  @param frameReader 帧读取回调，占位帧源时使用
+    #  @param frameReader 帧读取回调（测试桩用）
     #  @param logger 可选日志器
     #  @param focusPropertySetter 对焦属性写入回调，持有真实采集句柄的上层注入
     #  @param reachabilityProbe 可达性探测回调，为空表示不探测，设备可达性无法确认
-    #  @param frameSource 帧来源：camera 用真实采集句柄取帧，placeholder 用注入的读取器
+    #  @param frameSource 帧来源，固定 camera
     #  @return 无
-    def __init__(self, deviceAddr: str, backend: str, frameReader: FrameReader,
+    def __init__(self, deviceAddr: str, backend: str, frameReader: FrameReader | None,
                  logger: ILogger | None = None,
                  focusPropertySetter: FocusPropertySetter | None = None,
                  reachabilityProbe: ReachabilityProbe | None = None,
-                 frameSource: str = FRAME_SOURCE_PLACEHOLDER) -> None:
+                 frameSource: str = FRAME_SOURCE_CAMERA) -> None:
         ## @brief 设备地址
         self._deviceAddr: str = deviceAddr
         ## @brief 后端标识
         self._backend: str = backend
         ## @brief 帧读取回调
-        self._frameReader: FrameReader = frameReader
+        self._frameReader: FrameReader | None = frameReader
         ## @brief 可选日志器
         self._logger: ILogger | None = logger
         ## @brief 对焦属性写入回调
@@ -126,7 +122,7 @@ class CameraDevice(ICameraDevice, ICameraFocus):
         self._reachabilityProbe: ReachabilityProbe | None = reachabilityProbe
         ## @brief 帧来源
         self._frameSource: str = frameSource
-        ## @brief 真实采集句柄；占位帧源时恒为 None
+        ## @brief 真实采集句柄
         self._capture: Any | None = None
         ## @brief 是否已打开
         self._opened: bool = False
@@ -150,7 +146,8 @@ class CameraDevice(ICameraDevice, ICameraFocus):
     #  @raises EdgeError 设备不可达或未装图像处理库时抛出，code=CAPTURE
     def open(self) -> None:
         self.confirmReachable()
-        if self._frameSource == FRAME_SOURCE_CAMERA:
+        ## 注入帧读取器（测试桩）时不碰真实采集句柄；生产 frameReader 为 None 才真开
+        if self._frameReader is None:
             self.openDeviceCapture()
         self._opened = True
         self._everOpened = True
@@ -198,31 +195,15 @@ class CameraDevice(ICameraDevice, ICameraFocus):
         self.releaseDeviceCapture()
         self._capture = capture
 
-    ## @brief 读取一帧；真实帧源抓真相机帧并编码为 JPEG，占位帧源走注入读取器
-    #  @return 图像字节；占位帧源暂无帧返回 None
-    #  @raises EdgeError 设备未打开、抓帧失败或读取器抛内置异常时抛出，code=CAPTURE
+    ## @brief 读取一帧；固定抓真实相机帧并编码为 JPEG
+    #  @return JPEG 图像字节
+    #  @raises EdgeError 设备未打开或抓帧失败时抛出，code=CAPTURE
     def readFrame(self) -> FrameImage | None:
         if not self._opened:
             raise EdgeError(ErrorCode.CAPTURE, f"摄像头未打开: {self._deviceAddr}")
-        if self._frameSource == FRAME_SOURCE_CAMERA:
-            return self.grabDeviceFrame()
-        try:
-            frame = self._frameReader()
-        except EdgeError:
-            ## 帧读取器已经报了业务异常，同样把该路记成通信异常，状态里不许报正常
-            self.markCommFailed()
-            raise
-        except Exception as error:
-            ## 帧读取器抛出的任何内置异常都在模块内转业务异常，并置通信异常
-            self.markCommFailed()
-            raise EdgeError(ErrorCode.CAPTURE, f"取图失败: {self._deviceAddr}: {error}") from error
-        if frame is None:
-            ## 取不到图像说明这路已经不出图，按通信异常处理，不许继续报正常
-            self.markCommFailed()
-            return None
-        self._everCaptured = True
-        self.markCommSuccess()
-        return frame
+        if self._frameReader is not None:
+            return self._frameReader()
+        return self.grabDeviceFrame()
 
     ## @brief 真实抓一帧并编码成 JPEG 字节；抓不到就明确报错，不静默返回空
     #  @return JPEG 图像字节
@@ -410,13 +391,6 @@ class CameraDevice(ICameraDevice, ICameraFocus):
             if not bool(self._capture.set(propertyId, value)):
                 raise EdgeError(ErrorCode.CAPTURE, f"{controlName}指令下发失败: {self._deviceAddr}")
             return
-        if self._frameSource == FRAME_SOURCE_PLACEHOLDER:
-            ## 占位帧源没有真实采集句柄；为它去开一次真相机，在没接相机的现场会
-            ## 长时间卡住采集线程。这里明确判失败，由门面汇总成一条控制未生效日志
-            raise EdgeError(
-                ErrorCode.CAPTURE,
-                f"占位帧源没有真实采集句柄, 无法下发{controlName}: {self._deviceAddr}",
-            )
         imageLibrary = self._loadImageLibrary()
         try:
             index = int(self._deviceAddr)
@@ -453,19 +427,17 @@ class CameraFactory:
     #  @param logger 可选日志器
     #  @param focusPropertySetter 对焦属性写入回调
     #  @param reachabilityProbe 可达性探测回调，为空表示不探测
-    #  @param frameSource 帧来源：camera 真取帧，placeholder 用注入读取器
+    #  @param frameSource 帧来源，固定 camera
     #  @return 摄像头设备实例
     @staticmethod
-    def createDevice(deviceAddr: str, frameReader: FrameReader,
+    def createDevice(deviceAddr: str, frameReader: FrameReader | None,
                     logger: ILogger | None = None,
                     focusPropertySetter: FocusPropertySetter | None = None,
                     reachabilityProbe: ReachabilityProbe | None = None,
-                    frameSource: str = FRAME_SOURCE_PLACEHOLDER) -> CameraDevice:
+                    frameSource: str = FRAME_SOURCE_CAMERA) -> CameraDevice:
         ## 纯数字视为 Windows 索引，其余视为 Linux 固定路径
         isIndex = bool(deviceAddr) and all(char in INDEX_CHARS for char in deviceAddr)
         backend = BACKEND_DSHOW if isIndex else BACKEND_V4L2
-        if frameSource not in FRAME_SOURCES:
-            raise EdgeError(ErrorCode.CONFIG, f"帧来源配置非法: {frameSource}")
         return CameraDevice(
             deviceAddr, backend, frameReader, logger, focusPropertySetter,
             reachabilityProbe, frameSource,

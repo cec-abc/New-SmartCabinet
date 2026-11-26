@@ -21,7 +21,11 @@ from pathlib import Path
 from time import monotonic
 from typing import cast
 
-from edge.app_init import buildPeriodicFrame, defaultFailureFrame
+from edge.app_init import buildPeriodicFrame
+
+
+def defaultFailureFrame(workerId: int, exception: Exception):
+    return {"type": "error", "workerId": workerId, "message": str(exception)}
 from edge.control.edge_control import CachedEvent, EdgeControl, ModuleWiring
 from edge.exceptions import EdgeError, ErrorCode
 from edge.modules.recognition.recognition_utils import buildAck, buildAckItem

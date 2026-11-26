@@ -16,9 +16,12 @@ from edge.app_init import (
     buildCameraGroups,
     directInference,
     normalizeRoiWorkerIds,
-    placeholderFrames,
     resolveCaptureMode,
 )
+
+
+def placeholderFrames(_saveDir: str, _workerId: int):
+    return (b"", b"")
 from edge.exceptions import EdgeError, ErrorCode
 from edge.infra.roi_binding_loader import RoiBindingLoader, RoiBindingRow
 from edge.interfaces.i_camera import ICameraDevice
@@ -35,7 +38,7 @@ from edge.modules.recognition.recognition_utils import (
     AckItem,
 )
 from edge.modules.recognition.recognition_worker import RecognitionWorker
-from edge.modules.usb.usb_camera_device import FRAME_SOURCE_PLACEHOLDER, CameraFactory
+from edge.modules.usb.usb_camera_device import FRAME_SOURCE_CAMERA, CameraFactory
 from edge.modules.usb.usb_capture_worker import CaptureWorker
 from edge.modules.usb.usb_controller import (
     CAMERA_STATUS_OK,
@@ -254,40 +257,3 @@ def testSc5AllFourRoiRowsLandInItems(tmp_path: Path) -> None:
     assert set(positions) == {row.position for row in rows}
     assert len(positions) == len(set(positions))
     assert [str(item[ALERT_TYPE_FIELD]) for item in items] == [ALERT_UNKNOWN] * len(rows)
-
-
-## @brief 验收项 SC-6：frame_source = placeholder 时，没有图像处理库也能出帧、查状态、落盘
-def testSc6PlaceholderFrameSourceRunsWithoutCv2(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
-) -> None:
-    ## 把图像处理库从模块表里摘掉，模拟没装 cv2 的机器
-    modules = cast(dict[str, object], sys.modules)
-    monkeypatch.setitem(modules, "cv2", None)
-    device = CameraFactory.createDevice(
-        "0", lambda: SINGLE_FRAME_BYTES,
-        frameSource=FRAME_SOURCE_PLACEHOLDER,
-        reachabilityProbe=lambda: True,
-    )
-    assert str(device.getStatus().get("frameSource")) == FRAME_SOURCE_PLACEHOLDER
-
-    groups: list[tuple[ICameraDevice, ...]] = [(device,)]
-    controller = makeSingleCameraController(groups, tmp_path)
-    controller.init()
-    status = controller.getCameraStatus()
-    assert [str(item.get("camera_id")) for item in status] == [SINGLE_CAMERA_ID]
-    assert [str(item.get("status")) for item in status] == [CAMERA_STATUS_OK]
-
-    ## 初始化时的探测会关一次设备，这里重新打开再用采集线程取帧
-    device.open()
-    worker = CaptureWorker(
-        1, (device,), str(tmp_path), FakeLogger(),
-        ignoreSingleCaptureSuccess, ignoreSingleWorkerError,
-        SINGLE_ROLL_THRESHOLD, singleQuietDisk, lambda: SINGLE_FILE_STAMP,
-    )
-    frames = worker.captureOnce()
-    assert frames is not None
-    assert frames == (SINGLE_FRAME_BYTES,)
-    worker.saveFrames(frames, SINGLE_FILE_STAMP)
-    saved = tmp_path / f"w1_single_{SINGLE_FILE_STAMP}.jpg"
-    assert saved.read_bytes() == SINGLE_FRAME_BYTES
-    assert DegradedFrameStitcher().stitch((SINGLE_FRAME_BYTES,)) is SINGLE_FRAME_BYTES

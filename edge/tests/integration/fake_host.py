@@ -30,7 +30,7 @@ CAMERA_STATUS_VALUES: frozenset[str] = frozenset(
 ## @note 认不出的 type 落到 :463-465 的"未知 type 丢弃并计数"：
 ##       上位机既拿不到应答，丢弃计数又被污染。
 HOST_RECOGNIZED_FRAME_TYPES: frozenset[str] = frozenset(
-    {"periodic", "recognize_ack", "close_ack"},
+    {"periodic", "recognize_ack"},
 )
 ## @brief 上位机单帧上限 1MB（CommTypes.h:20）；超限 EdgeLink.cpp:168-173 直接断链
 HOST_FRAME_MAX_BYTES: int = 1024 * 1024

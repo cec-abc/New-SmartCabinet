@@ -2,12 +2,9 @@
 from __future__ import annotations
 
 import atexit
-import inspect
 import math
 import shutil
-import struct
 import sys
-import zlib
 from collections.abc import Callable, Sequence
 from concurrent.futures import Future, ThreadPoolExecutor
 from concurrent.futures import TimeoutError as FutureTimeoutError
@@ -42,7 +39,7 @@ from edge.infra.roi_binding_loader import (
     RoiBindingLoader,
     RoiBindingRow,
 )
-from edge.interfaces.i_camera import FrameImage, ICameraDevice
+from edge.interfaces.i_camera import ICameraDevice
 from edge.interfaces.i_config import IConfig
 from edge.interfaces.i_frame_sink import IFrameSink
 from edge.interfaces.i_logger import ILogger
@@ -75,8 +72,6 @@ from edge.modules.tcp.tcp_control_layer import LINK_UP, TcpControlLayer
 from edge.modules.tcp.tcp_socket import TcpSocket
 from edge.modules.usb.usb_camera_device import (
     FRAME_SOURCE_CAMERA,
-    FRAME_SOURCE_PLACEHOLDER,
-    FRAME_SOURCES,
     CameraFactory,
     quietImageLibraryLog,
 )
@@ -96,12 +91,6 @@ DEFAULT_CONFIG_PATH: str = str(EDGE_MODULE_DIR / "config" / "config.ini")
 CONFIG_FILE_HINT: str = "edge/config/config.ini"
 ## @brief 类别组合表文件名，与 ROI 对照表同目录
 CLASS_ITEM_MAP_FILE_NAME: str = "class_item_map.csv"
-## @brief 骨架占位图的宽，单位像素
-PLACEHOLDER_FRAME_WIDTH: int = 640
-## @brief 骨架占位图的高，单位像素
-PLACEHOLDER_FRAME_HEIGHT: int = 480
-## @brief 骨架占位图的灰度值
-PLACEHOLDER_FRAME_GRAY: int = 200
 ## @brief 链路启动器（注入，便于测试替换线程启动）
 LinkStarter = Callable[[TcpControlLayer], None]
 ## @brief 识别请求的信号键（协议原文）
@@ -112,10 +101,6 @@ PERIODIC_FRAME_TYPE: str = "periodic"
 SOFTWARE_VERSION: str = "edge-0.1.0"
 ## @brief 应答排空周期秒
 DEFAULT_DISPATCH_INTERVAL_SEC: float = 0.2
-## @brief 采集门面构造参数名：对焦模式
-USB_FOCUS_MODE_PARAM: str = "focusMode"
-## @brief 采集门面构造器类型；是否接受扩展参数由构造签名探测决定
-UsbBuilder = Callable[..., UsbController]
 ## @brief 摄像头可达性探测的尝试次数
 CAMERA_PROBE_ATTEMPTS: int = 2
 ## @brief 摄像头可达性探测两次尝试之间的等待秒数
@@ -124,8 +109,6 @@ CAMERA_PROBE_RETRY_SEC: float = 0.2
 MODULE_NAME: str = "AppInit"
 ## @brief 采集模式配置项名称
 CAPTURE_MODE_KEY: str = "capture_mode"
-## @brief 帧来源配置项名称
-FRAME_SOURCE_KEY: str = "frame_source"
 ## @brief 自动模式：1 路走单摄，偶数路走双摄，奇数路（3 及以上）明确报错
 CAPTURE_MODE_AUTO: str = "auto"
 ## @brief 强制双摄模式
@@ -168,12 +151,7 @@ CAMERA_INDICES_KEY: str = "camera_indices"
 MIN_WORKER_ID: int = 1
 ## @brief 双摄一组的相机台数
 DUAL_CAMERA_PAIR_SIZE: int = 2
-## @brief 占位图 PNG 的位深，灰度图固定 8 位
-PLACEHOLDER_PNG_BIT_DEPTH: int = 8
-## @brief 占位图 PNG 的压缩级别，取标准库最高级
-PLACEHOLDER_PNG_COMPRESSION_LEVEL: int = 9
-## @brief PNG 校验和按 32 位无符号数取值
-PNG_CRC32_MASK: int = 0xFFFFFFFF
+
 ## @brief 识别查表配置：识别改走 ROI 对照表文件，装配时固定传空字典
 EMPTY_ROI_CONFIG: RoiConfig = {}
 ## @brief 类别到物品名映射：识别改走对照表文件，装配时固定传空字典
@@ -374,12 +352,12 @@ class AssemblyParts:
     captureMode: str = CAPTURE_MODE_AUTO
     ## @brief 装配期判定的最终采集模式：single 或 dual
     resolvedCaptureMode: str = CAPTURE_MODE_DUAL
-    ## @brief 帧来源：camera 真取帧，placeholder 用占位图
-    frameSource: str = FRAME_SOURCE_PLACEHOLDER
     ## @brief 置信度门槛单一来源值，装配期读配置后注入识别门面
     confidenceThreshold: float = DEFAULT_CONFIDENCE
     ## @brief 缺框检测项是否拒识；生产装配为真，测试构造默认假
     requireBox: bool = False
+    ## @brief 出网单帧安全阈值字节数；为空时按单帧上限派生
+    safeFrameLimitBytes: int | None = None
 
 
 ## @brief 系统初始化：只初始化模块，不启采集/识别线程
@@ -503,13 +481,6 @@ def readFloat(config: IConfig, section: str, key: str,
     return result
 
 
-## @brief 探测采集门面构造函数是否接受指定参数
-#  @param paramName 参数名
-#  @return 接受返回 True
-def usbControllerAccepts(paramName: str) -> bool:
-    return paramName in inspect.signature(UsbController.__init__).parameters
-
-
 ## @brief 调用采集门面的启动采集接口；请求标识原样透传给采集线程
 #  @param usb 采集门面
 #  @param requestId 上位机请求标识
@@ -525,28 +496,22 @@ def startCaptureWithoutRequest(usb: UsbController) -> None:
     usb.startCapture()
 
 
-## @brief 构造采集门面；先探测构造签名，再决定是否传对焦与路数参数
+## @brief 构造采集门面；请求标识由启动接口原样透传给采集线程
 #  @param parts 全部构造注入参数
 #  @param sink 采集事件回调（注入）
 #  @param frameSink 帧流回调（注入，为空表示只落盘）
 #  @return 采集门面
 def buildUsbController(parts: AssemblyParts, sink: ICaptureSink,
                        frameSink: IFrameSink | None = None) -> UsbController:
-    builder: UsbBuilder = UsbController
-    if usbControllerAccepts(USB_FOCUS_MODE_PARAM):
-        return builder(
-            parts.cameraPairs, parts.captureDirs, sink, parts.logger,
-            parts.rollThreshold, parts.usageRatio, parts.clock,
-            focusMode=parts.focusMode,
-            focusPositions=parts.focusPositions,
-            zoomPositions=parts.zoomPositions,
-            focusStableMs=parts.focusStableMs,
-            cameraCount=len(parts.cameraIndices),
-            frameSink=frameSink,
-        )
-    return builder(
+    return UsbController(
         parts.cameraPairs, parts.captureDirs, sink, parts.logger,
         parts.rollThreshold, parts.usageRatio, parts.clock,
+        focusMode=parts.focusMode,
+        focusPositions=parts.focusPositions,
+        zoomPositions=parts.zoomPositions,
+        focusStableMs=parts.focusStableMs,
+        cameraCount=len(parts.cameraIndices),
+        frameSink=frameSink,
     )
 
 
@@ -716,7 +681,7 @@ def buildSystem(parts: AssemblyParts) -> EdgeControl:
     tcp = TcpControlLayer(
         parts.socket, parts.logger, parts.backoffSeq, parts.maxFrameSize,
         parts.heartIntervalSec, parts.buildHeartbeat,
-        control,
+        control, safeFrameLimitBytes=parts.safeFrameLimitBytes,
     )
     parts.captureTrigger.bind(partial(invokeStartCapture, usb))
     parts.cameraStatus.bindReader(partial(readCameraStatus, usb))
@@ -741,52 +706,6 @@ def buildSystem(parts: AssemblyParts) -> EdgeControl:
     )
     control.attachDispatchThread(dispatchThread)
     return control
-
-
-## @brief 占位帧提供器；设备没有真实图像可用时读取纯灰占位图
-#  @return 可解码的占位图像字节
-def placeholderFrame() -> FrameImage | None:
-    # TODO: 接入真实摄像头后，这里改为按平台读取一帧真实图像
-    return buildPlaceholderFrameBytes()
-
-
-## @brief 生成一张纯灰占位图；用标准库直接拼 PNG，保证无相机时也能跑通拼接与裁剪
-#  @return PNG 图像字节
-def buildPlaceholderFrameBytes() -> bytes:
-    raw = b"".join(
-        b"\x00" + bytes([PLACEHOLDER_FRAME_GRAY]) * PLACEHOLDER_FRAME_WIDTH
-        for _ in range(PLACEHOLDER_FRAME_HEIGHT)
-    )
-    header = (
-        struct.pack(">II", PLACEHOLDER_FRAME_WIDTH, PLACEHOLDER_FRAME_HEIGHT)
-        + bytes([PLACEHOLDER_PNG_BIT_DEPTH, 0, 0, 0, 0])
-    )
-    return (
-        b"\x89PNG\r\n\x1a\n"
-        + buildPngChunk(b"IHDR", header)
-        + buildPngChunk(
-            b"IDAT", zlib.compress(raw, PLACEHOLDER_PNG_COMPRESSION_LEVEL),
-        )
-        + buildPngChunk(b"IEND", b"")
-    )
-
-
-## @brief 拼一个 PNG 数据块；长度与校验和按 PNG 规范填写
-#  @param tag 数据块类型
-#  @param data 数据块内容
-#  @return 数据块字节
-def buildPngChunk(tag: bytes, data: bytes) -> bytes:
-    checksum = zlib.crc32(tag + data) & PNG_CRC32_MASK
-    return struct.pack(">I", len(data)) + tag + data + struct.pack(">I", checksum)
-
-
-## @brief 左右图读取占位提供器；流式帧入口已接管取图，这里保持空实现
-#  @param saveDir 采集目录
-#  @param workerId 线程编号
-#  @return 左右图像字节对
-def placeholderFrames(saveDir: str, workerId: int) -> tuple[FrameImage, FrameImage]:
-    # TODO: 需要按目录回放历史落盘图时，这里改为实读两张落盘图
-    return (b"", b"")
 
 
 ## @brief 推理执行线程池最大并发数；按采集 worker 数量级设定，避免慢推理无限堆积
@@ -814,7 +733,7 @@ def inferencePool() -> tuple[ThreadPoolExecutor, BoundedSemaphore]:
                     max_workers=INFERENCE_POOL_MAX_WORKERS,
                     thread_name_prefix="InferenceTimeout",
                 )
-                ## 闸门容量与池大小一致：在途推理达上限时拒绝新提交，杜绝无界排队
+                ## 闸门容量与池大小一致：在途推理达上限时排队等待，避免无界积压
                 gate = BoundedSemaphore(INFERENCE_POOL_MAX_WORKERS)
                 ## 进程退出时不等待在途推理，避免慢推理拖住停机
                 atexit.register(pool.shutdown, wait=False, cancel_futures=True)
@@ -823,19 +742,20 @@ def inferencePool() -> tuple[ThreadPoolExecutor, BoundedSemaphore]:
     return pool, gate
 
 
-## @brief 在超时上限内执行推理闭包；超时或并发已满抛 TimeoutError 由识别层转业务异常
+## @brief 在超时上限内执行推理闭包；超时抛 TimeoutError 由识别层转业务异常
 #  @param task 推理闭包
 #  @param timeoutSec 超时秒数，不大于 0 时直接执行不做限时
 #  @return 检测结果列表
-#  @raises TimeoutError 推理超时或在途推理已达上限
+#  @raises TimeoutError 推理超时
 def directInference(task: Callable[[], list[DetectionItem]],
                     timeoutSec: float) -> list[DetectionItem]:
     if timeoutSec <= 0:
         return task()
     pool, gate = inferencePool()
-    if not gate.acquire(blocking=False):
-        ## 在途已满时快速失败，不排队、不积压；调用方按超时降级处理
-        raise TimeoutError("在途推理已达上限")
+    deadline = monotonic() + timeoutSec
+    ## 在途已满时排队等待，直到有名额或超时；不拒绝新请求
+    if not gate.acquire(timeout=timeoutSec):
+        raise TimeoutError(f"推理超过 {timeoutSec}s")
     future: Future[list[DetectionItem]] | None = None
 
     ## @brief 任务结束（完成/异常/取消）时归还闸门名额
@@ -847,7 +767,7 @@ def directInference(task: Callable[[], list[DetectionItem]],
     try:
         future = pool.submit(task)
         future.add_done_callback(releaseGate)
-        return future.result(timeout=timeoutSec)
+        return future.result(timeout=max(0.0, deadline - monotonic()))
     except FutureTimeoutError as error:
         ## 超时后取消尚未开始排队的任务；已在执行的推理无法强停，交由线程池收尾
         if future is not None:
@@ -920,32 +840,17 @@ def defaultStamp() -> str:
         return str(STAMP_SEQUENCE).zfill(STAMP_SEQUENCE_DIGITS)
 
 
-## @brief 默认失败帧；按内部错误帧形状组装，出网守卫会拦下这种帧型
-#  @param workerId 线程编号
-#  @param exception 业务异常
-#  @return 失败应答帧
-def defaultFailureFrame(workerId: int, exception: Exception) -> CachedEvent:
-    return {"type": "error", "workerId": workerId, "message": str(exception)}
-
-
-## @brief 按相机索引顺序创建设备列表
+## @brief 按相机索引顺序创建设备列表（只走真实相机取帧）
 #  @param cameraIndices 相机索引列表
 #  @param logger 可选日志器，设备层用它记对焦下发说明
-#  @param frameSource 帧来源：camera 真取帧，placeholder 用注入占位图
 #  @return 设备列表
 def buildCameraDevices(cameraIndices: list[int],
-                       logger: ILogger | None = None,
-                       frameSource: str = FRAME_SOURCE_PLACEHOLDER) -> list[ICameraDevice]:
+                       logger: ILogger | None = None) -> list[ICameraDevice]:
     return [
         CameraFactory.createDevice(
-            str(index), placeholderFrame,
+            str(index), None,
             logger=logger,
-            frameSource=frameSource,
-            ## 真实取帧时由设备 open 自己确认在位，不再另开一次探测句柄
-            reachabilityProbe=(
-                None if frameSource == FRAME_SOURCE_CAMERA
-                else buildCameraReachabilityProbe(str(index))
-            ),
+            frameSource=FRAME_SOURCE_CAMERA,
         )
         for index in cameraIndices
     ]
@@ -1342,8 +1247,6 @@ class CaptureLayout:
     cameraIndices: list[int]
     ## @brief 配置里的 capture_mode 原值
     captureMode: str
-    ## @brief 帧来源：camera 真取帧，placeholder 用占位图
-    frameSource: str
     ## @brief 判定后的最终采集模式：single 或 dual
     resolvedMode: str
 
@@ -1357,6 +1260,8 @@ class Infrastructure:
     socket: ISocket
     ## @brief 单帧字节上限
     maxFrameSize: int
+    ## @brief 出网单帧安全阈值字节数（配置注入）
+    safeFrameLimitBytes: int | None = None
 
 
 ## @brief 识别装配输入：相机设备与分组、三个句柄、对照表行与推理参数
@@ -1414,20 +1319,15 @@ def readCaptureLayout(config: IConfig) -> CaptureLayout:
     captureMode = str(config.get(
         "usb", CAPTURE_MODE_KEY, default=CAPTURE_MODE_AUTO,
     ))
-    frameSource = str(config.get(
-        "usb", FRAME_SOURCE_KEY, default=FRAME_SOURCE_CAMERA,
-    ))
-    if frameSource not in FRAME_SOURCES:
-        raise EdgeError(ErrorCode.CONFIG, f"frame_source 非法: {frameSource}")
     resolvedMode = resolveCaptureMode(captureMode, len(cameraIndices))
     groupCount = resolveGroupCount(len(cameraIndices), resolvedMode)
     captureDirs = fitSaveDirs(configuredCaptureDirs, groupCount)
     recognitionDirs = fitSaveDirs(configuredRecognitionDirs, groupCount)
     ## 存图开关：关闭时把对应目录置空串，下游靠 bool(saveDir) 自动跳过落盘与滚动删旧。
-    ## 缺键时按开启处理，保持既有配置行为不变；显式 false 才关闭。
-    if not flagEnabled(config.get("usb", SAVE_FRAMES_KEY, default=True)):
+    ## 缺键时按生产口径关闭；显式 true 才开启落盘。
+    if not flagEnabled(config.get("usb", SAVE_FRAMES_KEY, default=False)):
         captureDirs = [""] * len(captureDirs)
-    if not flagEnabled(config.get("recognition", SAVE_PANORAMA_KEY, default=True)):
+    if not flagEnabled(config.get("recognition", SAVE_PANORAMA_KEY, default=False)):
         recognitionDirs = [""] * len(recognitionDirs)
     return CaptureLayout(
         logDir=logDir,
@@ -1435,7 +1335,6 @@ def readCaptureLayout(config: IConfig) -> CaptureLayout:
         recognitionDirs=recognitionDirs,
         cameraIndices=cameraIndices,
         captureMode=captureMode,
-        frameSource=frameSource,
         resolvedMode=resolvedMode,
     )
 
@@ -1460,7 +1359,13 @@ def buildInfrastructure(config: IConfig, layout: CaptureLayout) -> Infrastructur
         readFloat(config, "tcp", "recv_timeout_sec"),
     )
     maxFrameSize = readInt(config, "tcp", "max_frame_size")
-    return Infrastructure(logManager=logManager, socket=socket, maxFrameSize=maxFrameSize)
+    safeFrameLimitBytes = readInt(
+        config, "tcp", "safe_frame_limit_bytes", default=maxFrameSize // 2,
+    )
+    return Infrastructure(
+        logManager=logManager, socket=socket, maxFrameSize=maxFrameSize,
+        safeFrameLimitBytes=safeFrameLimitBytes,
+    )
 
 
 ## @brief 备识别装配输入：建相机设备与三个句柄，装载对照表、切分设备组并读出推理参数
@@ -1472,7 +1377,7 @@ def buildInfrastructure(config: IConfig, layout: CaptureLayout) -> Infrastructur
 def buildRecognitionInputs(config: IConfig, layout: CaptureLayout,
                            infra: Infrastructure) -> RecognitionInputs:
     cameraDevices = buildCameraDevices(
-        layout.cameraIndices, infra.logManager, layout.frameSource,
+        layout.cameraIndices, infra.logManager,
     )
     cameraStatus = CameraStatusHandle()
     captureTrigger = CaptureTrigger()
@@ -1487,7 +1392,7 @@ def buildRecognitionInputs(config: IConfig, layout: CaptureLayout,
         infra.logManager, confidenceThreshold=confidenceThreshold,
     )
     requireRoiBinding = flagEnabled(config.get(
-        "recognition", "require_roi_binding", default=False,
+        "recognition", "require_roi_binding", default=True,
     ))
     if requireRoiBinding:
         ## 生产环境要求：装载不到对照表就启动即失败
@@ -1541,9 +1446,10 @@ def assembleParts(config: IConfig, layout: CaptureLayout,
         recognitionDirs=layout.recognitionDirs,
         engine=YoloEngine.instance(
             infra.logManager, inputs.inferenceBackend, inputs.nmsIouThreshold,
+            confThreshold=inputs.confidenceThreshold,
         ),
         modelPath=resolveConfigPath(str(config.get("recognition", "model_path"))),
-        frameLoader=placeholderFrames,
+        frameLoader=lambda _saveDir, _workerId: (b"", b""),
         timeoutRunner=directInference,
         inferTimeoutSec=readFloat(config, "recognition", "infer_timeout_sec"),
         roiConfig=EMPTY_ROI_CONFIG,
@@ -1557,13 +1463,18 @@ def assembleParts(config: IConfig, layout: CaptureLayout,
         requireBox=True,
         backoffSeq=normalizeBackoffSeq(config.get("tcp", "backoff_seq")),
         maxFrameSize=infra.maxFrameSize,
+        safeFrameLimitBytes=infra.safeFrameLimitBytes,
         heartIntervalSec=readFloat(config, "tcp", "heart_interval_sec"),
         buildHeartbeat=buildPeriodicFrame(
             inputs.cameraStatus.readStatus, inputs.startedAt, SOFTWARE_VERSION,
         ),
         asyncHandlers=buildAsyncHandlers(inputs.captureTrigger, inputs.recognitionCapability),
-        failureFrameBuilder=defaultFailureFrame,
-        frameSender=buildFrameSender(TcpComm(infra.socket, infra.maxFrameSize, infra.logManager)),
+        failureFrameBuilder=lambda workerId, exception: {
+            "type": "error", "workerId": workerId, "message": str(exception),
+        },
+        frameSender=buildFrameSender(TcpComm(
+            infra.socket, infra.maxFrameSize, infra.logManager, infra.safeFrameLimitBytes,
+        )),
         linkStarter=startTcpLink,
         logStarter=infra.logManager.start,
         logStopper=infra.logManager.stop,
@@ -1590,7 +1501,6 @@ def assembleParts(config: IConfig, layout: CaptureLayout,
         ),
         captureMode=layout.captureMode,
         resolvedCaptureMode=layout.resolvedMode,
-        frameSource=layout.frameSource,
     )
 
 
