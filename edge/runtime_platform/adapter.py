@@ -1,5 +1,5 @@
 """平台差异适配：Windows 实现、Linux 实现与唯一平台工厂。"""
-## @file edge/platform/adapter.py
+## @file edge/runtime_platform/adapter.py
 ## @brief 平台适配实现与工厂：Windows 与 Linux 文件锁均已实现，工厂是唯一判断平台的位置
 ## @author 袁燕
 from __future__ import annotations

@@ -15,8 +15,8 @@ import pytest
 
 from edge import app_init
 from edge.exceptions import EdgeError, ErrorCode
-from edge.platform.adapter import WindowsAdapter
-from edge.platform.file_lock import ProcessFileLock
+from edge.runtime_platform.adapter import WindowsAdapter
+from edge.runtime_platform.file_lock import ProcessFileLock
 
 ## @file edge/tests/integration/test_dplus_real_process_lock.py
 ## @brief 真实进程锁双开与配置路径自锚定的集成用例
@@ -56,8 +56,8 @@ def buildChildEnv(tmpPath: Path) -> dict[str, str]:
 def buildFirstHolderCode(lockPath: Path) -> str:
     return (
         "import time\n"
-        "from edge.platform.adapter import WindowsAdapter\n"
-        "from edge.platform.file_lock import ProcessFileLock\n"
+        "from edge.runtime_platform.adapter import WindowsAdapter\n"
+        "from edge.runtime_platform.file_lock import ProcessFileLock\n"
         f"lock = ProcessFileLock(WindowsAdapter(), {str(lockPath)!r})\n"
         "lock.acquire()\n"
         "print('LOCKED', flush=True)\n"

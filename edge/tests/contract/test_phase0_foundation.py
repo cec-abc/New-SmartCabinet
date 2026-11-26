@@ -12,8 +12,8 @@ from typing import cast
 import pytest
 
 from edge.exceptions import EdgeError, ErrorCode
-from edge.platform.adapter import LinuxAdapter, PlatformFactory, WindowsAdapter
-from edge.platform.file_lock import ProcessFileLock
+from edge.runtime_platform.adapter import LinuxAdapter, PlatformFactory, WindowsAdapter
+from edge.runtime_platform.file_lock import ProcessFileLock
 
 
 ## @brief 为 skipif 装饰器补齐类型，避免 follow_imports=skip 下装饰器被推断为 Any
@@ -93,8 +93,8 @@ def testSecondProcessCannotAcquireLock() -> None:
         try:
             script = (
                 "from edge.exceptions import EdgeError\n"
-                "from edge.platform.adapter import WindowsAdapter\n"
-                "from edge.platform.file_lock import ProcessFileLock\n"
+                "from edge.runtime_platform.adapter import WindowsAdapter\n"
+                "from edge.runtime_platform.file_lock import ProcessFileLock\n"
                 f"lock = ProcessFileLock(WindowsAdapter(), {str(lockPath)!r})\n"
                 "try:\n"
                 "    lock.acquire()\n"

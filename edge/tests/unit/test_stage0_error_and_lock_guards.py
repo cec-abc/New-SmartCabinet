@@ -13,8 +13,8 @@ from unittest.mock import patch
 import pytest
 
 from edge.exceptions import EdgeError, ErrorCode
-from edge.platform.adapter import LinuxAdapter, PlatformFactory, WindowsAdapter
-from edge.platform.file_lock import ProcessFileLock
+from edge.runtime_platform.adapter import LinuxAdapter, PlatformFactory, WindowsAdapter
+from edge.runtime_platform.file_lock import ProcessFileLock
 from edge.tests.fakes.fake_platform_adapter import FakePlatformAdapter
 
 

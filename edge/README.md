@@ -402,10 +402,12 @@ camera_indices = 1,2,3,4,5,6,7,8
 
 ### 6.7 `AttributeError: module 'platform' has no attribute 'python_implementation'`
 
-**原因**：在 `edge/` 目录里直接跑，导致 `edge/platform/` 这个包遮蔽了标准库的 `platform` 模块。
+**原因**：`edge/platform/` 这个包名与 Python 标准库 `platform` 冲突，从 `edge/` 目录启动时遮蔽了标准库。
 
-**处理**：在仓库根目录跑，或按 2.2 的写法先设 `PYTHONPATH`。
-程序启动时也会主动把工程目录从模块搜索路径里摘掉，避免这个坑。
+**处理**：已彻底修复——该包重命名为 `edge/runtime_platform/`（类名 `PlatformFactory`/`ProcessFileLock` 不变），
+导入改为 `from edge.runtime_platform.adapter import ...`、`from edge.runtime_platform.file_lock import ...`，
+不再与标准库同名。PyCharm 调试 main.py 也不再触发此错误。
+历史上若在旧版本遇到，临时规避是在仓库根目录跑或按 2.2 设 `PYTHONPATH`。
 
 ### 6.8 启动窗口出现 `cv::VideoCapture::open VIDEOIO(DSHOW)` 警告
 
@@ -465,7 +467,7 @@ python -m edge.tests.integration.watch_periodic 9000 0 req
 │  │  └─ README.md           配置件字段说明
 │  ├─ interfaces/            接口契约（零实现）
 │  ├─ base/                  通用线程与生命周期基类
-│  ├─ platform/              平台适配与进程锁
+│  ├─ runtime_platform/      平台适配与进程锁（避免与标准库platform同名）
 │  ├─ infra/                 配置管理、日志管理、ROI 对照表装载
 │  ├─ modules/
 │  │  ├─ tcp/                通信：套接字、控制层、重连、心跳、解码

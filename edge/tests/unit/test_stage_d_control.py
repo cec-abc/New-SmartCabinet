@@ -38,7 +38,7 @@ from edge.modules.recognition.recognition_utils import (
     TimeoutRunner,
 )
 from edge.modules.tcp.tcp_control_layer import TcpControlLayer
-from edge.platform.file_lock import DEFAULT_LOCK_FILE_NAME
+from edge.runtime_platform.file_lock import DEFAULT_LOCK_FILE_NAME
 from edge.tests.fakes.fake_camera_device import FakeCameraDevice
 from edge.tests.fakes.fake_logger import FakeLogger
 from edge.tests.fakes.fake_platform_adapter import FakePlatformAdapter
@@ -443,7 +443,7 @@ def test_d_4_build_system_has_no_business_branches() -> None:
 
 ## @brief 对应验收项 d-4：defaultParts 真实 Windows 平台分支与 Sink Fake 契约
 def test_d_4_platform_and_fake_contracts() -> None:
-    from edge.platform.adapter import PlatformFactory, WindowsAdapter
+    from edge.runtime_platform.adapter import PlatformFactory, WindowsAdapter
 
     ## FakePlatformAdapter 只在 Windows 返回完整实现，构造注入分支按平台工厂裁决
     adapter = PlatformFactory.create()

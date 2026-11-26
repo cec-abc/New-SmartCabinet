@@ -1,5 +1,5 @@
 """进程单文件锁：防止双开与端口占用，平台差异由注入的适配器提供。"""
-## @file edge/platform/file_lock.py
+## @file edge/runtime_platform/file_lock.py
 ## @brief 进程单文件锁：main.py 启动先拿锁，占用或平台不支持转配置错，句柄随对象持有
 ## @author 袁燕
 from __future__ import annotations

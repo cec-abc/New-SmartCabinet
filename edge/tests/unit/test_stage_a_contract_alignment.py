@@ -194,7 +194,7 @@ def testInterfaceModulesImportNoBusinessModules() -> None:
         "i_thread": ["__future__", "abc"],
     }
     businessPrefixes: tuple[str, ...] = (
-        "edge.platform",
+        "edge.runtime_platform",
         "edge.infra",
         "edge.modules",
         "edge.control",

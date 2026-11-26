@@ -10,8 +10,8 @@ from types import FrameType
 
 from edge.app_init import AssemblyParts, buildSystem, defaultParts
 from edge.interfaces.i_platform import IPlatformAdapter
-from edge.platform.adapter import PlatformFactory
-from edge.platform.file_lock import DEFAULT_LOCK_FILE_NAME, ProcessFileLock
+from edge.runtime_platform.adapter import PlatformFactory
+from edge.runtime_platform.file_lock import DEFAULT_LOCK_FILE_NAME, ProcessFileLock
 
 ## @file edge/main.py
 ## @brief 进程入口：取进程锁、装配、注册信号、启动、等待退出、串行停机
