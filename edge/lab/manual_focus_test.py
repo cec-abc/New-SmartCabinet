@@ -170,7 +170,7 @@ def main():
     parser = argparse.ArgumentParser(description="手动对焦 / 变焦测试")
     parser.add_argument(
         "--device",
-        default="2",
+        default="1",
         help="摄像头地址：Windows 写索引，Linux 写 /dev/videoN",
     )
     args = parser.parse_args()
