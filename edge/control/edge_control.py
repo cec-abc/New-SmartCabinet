@@ -17,6 +17,10 @@ from edge.interfaces.i_sinks import (
     IRecognitionSink,
     SignalSink,
 )
+from edge.modules.recognition.recognition_modes import (
+    DEDUP_BEST_CONFIDENCE,
+    DEDUP_FIRST,
+)
 
 ## @file edge/control/edge_control.py
 ## @brief 控制层门面：信号分发、重复请求复用应答、链路决策与一键停机严格串行
@@ -185,7 +189,8 @@ class EdgeControl(BaseService, SignalSink, ICaptureSink, IRecognitionSink, IFram
                  expectedWorkerCount: int = 1,
                  maxAggregationEntries: int = MAX_AGGREGATION_ENTRIES,
                  degradedItemsProvider: DegradedItemsProvider = emptyDegradedItems,
-                 aggregationTimeoutSec: float = DEFAULT_AGGREGATION_TIMEOUT_SEC) -> None:
+                 aggregationTimeoutSec: float = DEFAULT_AGGREGATION_TIMEOUT_SEC,
+                 dedupStrategy: str = DEDUP_FIRST) -> None:
         ## @brief 日志器
         self._logger: ILogger = logger
         ## @brief 注入的分发表
@@ -236,6 +241,8 @@ class EdgeControl(BaseService, SignalSink, ICaptureSink, IRecognitionSink, IFram
         self._frameErrorCount: int = 0
         ## @brief 全未知清单告警累计数，供运行期诊断识别退化
         self._allUnknownCount: int = 0
+        ## @brief 汇总去重策略：first=重复货位保留首条；best_confidence=取高置信度
+        self._dedupStrategy: str = dedupStrategy
 
     ## @brief 生命周期初始化：只初始化模块，不启采集/识别线程（D-02）
     #  @return 无
@@ -695,25 +702,54 @@ class EdgeControl(BaseService, SignalSink, ICaptureSink, IRecognitionSink, IFram
         items = ack.get(WIRE_ITEMS_FIELD, [])
         return list(items) if isinstance(items, list) else []
 
-    ## @brief 合并各采集线程的清单；按货位号排序，重复货位保留第一条
+    ## @brief 合并各采集线程的清单；按货位号排序，重复货位按配置策略保留
     #  @param workerItems 线程编号到清单条目的映射
     #  @return 合并后的清单与重复货位列表
+    #  @note first=保留首条（原口径）；best_confidence=同货位取置信度高者，
+    #        供 8 路独立裁剪模式下同货位被多路同时看到时择优
     def mergeWorkerItems(self, workerItems: dict[int, list[object]]) -> tuple[
         list[object], list[str],
     ]:
         merged: list[object] = []
-        seenPositions: set[str] = set()
+        positionIndexes: dict[str, int] = {}
         duplicates: list[str] = []
         for workerId in sorted(workerItems):
             for rawItem in workerItems[workerId]:
                 position = self.readItemPosition(rawItem)
-                if position in seenPositions:
+                if position in positionIndexes:
                     duplicates.append(position)
+                    self.resolveDuplicate(positionIndexes, position, rawItem, merged)
                     continue
-                seenPositions.add(position)
+                positionIndexes[position] = len(merged)
                 merged.append(self.normalizeAckItem(rawItem))
         merged.sort(key=lambda entry: self.readItemPosition(entry))
         return merged, duplicates
+
+    ## @brief 处理重复货位：按配置策略保留首条或替换为置信度更高的一条
+    #  @param positionIndexes 货位号到 merged 下标的映射（原地更新）
+    #  @param position 重复的货位号
+    #  @param rawItem 新到的清单条目
+    #  @param merged 已合并条目列表（原地更新）
+    #  @return 无
+    def resolveDuplicate(self, positionIndexes: dict[str, int], position: str,
+                         rawItem: object, merged: list[object]) -> None:
+        if self._dedupStrategy != DEDUP_BEST_CONFIDENCE:
+            return
+        index = positionIndexes[position]
+        if self.readItemConfidence(rawItem) <= self.readItemConfidence(merged[index]):
+            return
+        merged[index] = self.normalizeAckItem(rawItem)
+
+    ## @brief 读清单条目的置信度；缺字段或非数值按 0.0 处理，不冒充高置信
+    #  @param rawItem 清单条目
+    #  @return 置信度数值
+    def readItemConfidence(self, rawItem: object) -> float:
+        if not isinstance(rawItem, dict):
+            return 0.0
+        value = rawItem.get(ITEM_CONFIDENCE_FIELD)
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            return 0.0
+        return float(value)
 
     ## @brief 读清单条目的货位号
     #  @param rawItem 清单条目

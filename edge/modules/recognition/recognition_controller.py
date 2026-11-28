@@ -10,6 +10,7 @@ from edge.infra.roi_binding_loader import RoiBindingRow
 from edge.interfaces.i_logger import ILogger
 from edge.interfaces.i_recognition_engine import IRecognitionEngine
 from edge.interfaces.i_sinks import AckFrame, IRecognitionSink
+from edge.modules.recognition.recognition_modes import RECOGNITION_MODE_STITCH
 from edge.modules.recognition.recognition_stitcher import FrameStitcher
 from edge.modules.recognition.recognition_utils import (
     DEFAULT_CONFIDENCE_THRESHOLD,
@@ -72,6 +73,8 @@ class RecognitionController(BaseService):
                  rollThreshold: float = DEFAULT_PANORAMA_ROLL_THRESHOLD,
                  usageRatio: Callable[[], float] | None = None,
                  requireBox: bool = False,
+                 recognitionMode: str = RECOGNITION_MODE_STITCH,
+                 cropRects: dict[int, tuple[float, float, float, float]] | None = None,
                  ) -> None:
         ## @brief 推理引擎
         self._engine: IRecognitionEngine = engine
@@ -125,6 +128,12 @@ class RecognitionController(BaseService):
         self._usageRatio: Callable[[], float] | None = usageRatio
         ## @brief 缺框检测项是否拒识；生产装配注入真
         self._requireBox: bool = requireBox
+        ## @brief 识别模式：stitch=拼接全景推理；crop=每路裁剪独立识别
+        self._recognitionMode: str = recognitionMode
+        ## @brief 每路裁剪矩形，键=路号（1~8），值=归一化 (x1,y1,x2,y2)
+        self._cropRects: dict[int, tuple[float, float, float, float]] = (
+            cropRects if cropRects is not None else {}
+        )
 
     ## @brief 初始化：校验配置并仅加载一次模型，Fail-Fast 不引入能力降级
     #  @return 无
@@ -268,6 +277,8 @@ class RecognitionController(BaseService):
             confidenceThreshold=self._confidenceThreshold,
             rollThreshold=self._rollThreshold, usageRatio=self._usageRatio,
             requireBox=self._requireBox,
+            recognitionMode=self._recognitionMode,
+            cropRect=self._cropRects.get(workerId),
         )
 
     ## @brief 统一的错误日志出口，异常码使用 code.name

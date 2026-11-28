@@ -22,6 +22,7 @@ def test_panorama_roll_deletes_oldest(tmp_path: Path) -> None:
     worker = RecognitionWorker.__new__(RecognitionWorker)
     worker._saveDir = str(tmp_path)
     worker._rollThreshold = 0.3
+    worker._imageTag = "panorama"
     worker.removedPanoramaCount = 0
     usage = {"ratio": 0.9}
 
@@ -52,6 +53,7 @@ def test_panorama_roll_noop_when_below_threshold(tmp_path: Path) -> None:
     worker = RecognitionWorker.__new__(RecognitionWorker)
     worker._saveDir = str(tmp_path)
     worker._rollThreshold = 0.3
+    worker._imageTag = "panorama"
     worker.removedPanoramaCount = 0
     worker._usageRatio = lambda: 0.1  # type: ignore[method-assign]
     p = tmp_path / "w1_panorama_0.png"

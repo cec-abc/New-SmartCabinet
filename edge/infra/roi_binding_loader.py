@@ -29,8 +29,8 @@ FIRST_DATA_LINE: int = 2
 MIN_PRINTABLE_CODE: int = 32
 ## @brief 合法的工作线程编号下界
 MIN_WORKER_ID: int = 1
-## @brief 合法的工作线程编号上界
-MAX_WORKER_ID: int = 4
+## @brief 合法的工作线程编号上界；8 路单摄模式下每路一个编号（1~8）
+MAX_WORKER_ID: int = 8
 ## @brief ROI 矩形坐标绝对上限；覆盖 8K 相机全景，拦住远超画布的离谱配置
 MAX_ROI_COORDINATE: int = 8192
 ## @brief 十二列表头里必需的九列，缺任一列即判配置错误

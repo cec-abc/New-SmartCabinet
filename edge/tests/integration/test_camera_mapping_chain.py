@@ -17,6 +17,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import cast
 
+import pytest
+
 from edge.app_init import (
     DEFAULT_CONFIG_PATH,
     buildCameraDevices,
@@ -26,8 +28,15 @@ from edge.app_init import (
 from edge.infra.config_manager import IniConfigManager
 from edge.infra.roi_binding_loader import RoiBindingLoader, RoiBindingRow
 from edge.modules.usb.usb_controller import UsbController
+from edge.tests.factory_gate import SKIP_REASON, factoryConfigActive
 from edge.tests.fakes.fake_logger import FakeLogger
 from edge.tests.fakes.fake_sinks import FakeCaptureSink
+
+## 本文件全部用例固化出厂 8 路形态；现场调试态（路数/配对被改）时整文件让位
+pytestmark = pytest.mark.skipif(
+    not factoryConfigActive(Path(DEFAULT_CONFIG_PATH)),
+    reason=SKIP_REASON,
+)
 
 ## @file edge/tests/integration/test_camera_mapping_chain.py
 ## @brief 相机映射链用例：8 路到 4 组再到货位的归属与编号口径固化

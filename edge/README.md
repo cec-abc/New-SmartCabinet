@@ -149,6 +149,16 @@ python -m edge.main
 | `inference_backend` | `rknn` | 推理后端；正式交付固定 RKNN，换后端需重新标定 |
 | `nms_iou_threshold` | `0.45` | 同类别非极大值抑制的重叠阈值 |
 | `min_confidence` | `0.85` | 置信度门槛，单一来源；roi_binding.csv 每行 confidence 可覆盖 |
+| `recognition_mode` | `crop` | 识别模式：`stitch`=左右拼全景推理一次（原口径）；`crop`=每路按比例裁剪后独立识别（8 路单摄配套） |
+| `crop_cam1` | `0.10,0.00,1.00,1.00` | CAM1 裁剪矩形，归一化 0~1（x1,y1,x2,y2，相对该路画面）；`0,0,1,1`=全图不裁 |
+| `crop_cam2` | `0.00,0.00,0.30,1.00` | CAM2 裁剪矩形，含义同上；键缺省=全图不裁 |
+| `crop_cam3` | `0.00,0.00,1.00,1.00` | CAM3 裁剪矩形，含义同上 |
+| `crop_cam4` | `0.00,0.00,1.00,1.00` | CAM4 裁剪矩形，含义同上 |
+| `crop_cam5` | `0.10,0.00,1.00,1.00` | CAM5 裁剪矩形，含义同上 |
+| `crop_cam6` | `0.00,0.00,0.30,1.00` | CAM6 裁剪矩形，含义同上 |
+| `crop_cam7` | `0.00,0.00,1.00,1.00` | CAM7 裁剪矩形，含义同上 |
+| `crop_cam8` | `0.00,0.00,1.00,1.00` | CAM8 裁剪矩形，含义同上 |
+| `dedup_strategy` | `best_confidence` | 汇总去重策略：`first`=重复货位保留首条（原口径）；`best_confidence`=同货位取置信度高者 |
 
 ### 3.5 `require_roi_binding`：识别清单给不出来怎么办
 

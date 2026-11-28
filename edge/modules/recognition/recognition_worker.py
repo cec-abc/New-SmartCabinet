@@ -12,6 +12,10 @@ from edge.interfaces.i_camera import FrameImage
 from edge.interfaces.i_logger import ILogger
 from edge.interfaces.i_recognition_engine import DetectionItem, IRecognitionEngine
 from edge.interfaces.i_sinks import AckFrame
+from edge.modules.recognition.recognition_modes import (
+    DEFAULT_RECOGNITION_MODE,
+    RECOGNITION_MODE_CROP,
+)
 from edge.modules.recognition.recognition_stitcher import FrameStitcher
 from edge.modules.recognition.recognition_utils import (
     DEFAULT_CONFIDENCE_THRESHOLD,
@@ -89,7 +93,10 @@ class RecognitionWorker(BaseThread):
                  confidenceThreshold: float = DEFAULT_CONFIDENCE_THRESHOLD,
                  rollThreshold: float = DEFAULT_PANORAMA_ROLL_THRESHOLD,
                  usageRatio: Callable[[], float] | None = None,
-                 requireBox: bool = False) -> None:
+                 requireBox: bool = False,
+                 recognitionMode: str = DEFAULT_RECOGNITION_MODE,
+                 cropRect: tuple[float, float, float, float] | None = None,
+                 ) -> None:
         super().__init__(name=f"RecognitionWorker-{workerId}", logger=logger)
         ## @brief 线程编号
         self._workerId: int = workerId
@@ -137,14 +144,24 @@ class RecognitionWorker(BaseThread):
         )
         ## @brief 缺框检测项是否拒识；生产装配注入真，测试桩默认假
         self._requireBox: bool = requireBox
-        ## @brief 本轮全景删旧计数，供验收举证与现场排查
+        ## @brief 识别模式：stitch=拼接全景推理；crop=本路按归一化矩形裁剪后识别
+        self._recognitionMode: str = recognitionMode
+        ## @brief 本路裁剪矩形（归一化 0~1）；None 表示全图不裁
+        self._cropRect: tuple[float, float, float, float] | None = cropRect
+        ## @brief 存图文件名里的环节标签：拼接模式 panorama、裁剪模式 crop
+        self._imageTag: str = (
+            "crop" if recognitionMode == RECOGNITION_MODE_CROP else "panorama"
+        )
+        ## @brief 本轮存图删旧计数，供验收举证与现场排查
         self.removedPanoramaCount: int = 0
 
     ## @brief 单轮识别主流程；顶层异常转失败回调，不外抛、不波及其他线程
     #  @return 无
     def runLoop(self) -> None:
         try:
-            if self._roiBindingRows is None:
+            if self._recognitionMode == RECOGNITION_MODE_CROP:
+                items = self.runCropRecognition()
+            elif self._roiBindingRows is None:
                 items = self.runConfigRecognition()
             else:
                 items = self.runTableRecognition()
@@ -189,6 +206,46 @@ class RecognitionWorker(BaseThread):
             items.append(self.recognizeRow(detections, row))
         return items
 
+    ## @brief 裁剪模式识别：本路单帧按归一化矩形裁剪，推理一次后按对照表逐行判定
+    #  @return 协议条目列表
+    #  @raises EdgeError 未装配图像处理器或帧为空时抛出，code=CONFIG/CAPTURE
+    def runCropRecognition(self) -> list[AckItem]:
+        stitcher = self._stitcher
+        if stitcher is None:
+            raise EdgeError(ErrorCode.CONFIG, "未装配图像处理器, 无法走裁剪识别")
+        if not self._frames:
+            raise EdgeError(ErrorCode.CAPTURE, "裁剪识别收到的帧为空")
+        rows = [
+            row for row in (self._roiBindingRows or [])
+            if row.workerId == self._workerId
+        ]
+        cropped = self.cropFrame(stitcher)
+        self.savePanoramaIfEnabled(cropped)
+        ## 尺寸护栏：对照矩形与本路裁剪图尺寸明显错配时按未识别降级并记错
+        mismatch = canvasRoiMismatch(stitcher.panoramaSize(cropped), rows)
+        if mismatch:
+            self.logFailure(EdgeError(ErrorCode.CAPTURE, mismatch))
+            return [buildRowItem(row, False, 0.0) for row in rows]
+        detections = self.runInference(cropped)
+        return [self.recognizeRow(detections, row) for row in rows]
+
+    ## @brief 按归一化矩形裁剪本路帧；未配置矩形时原样返回全图字节
+    #  @param stitcher 图像处理器（复用其解码编码能力）
+    #  @return 裁剪后的图像字节
+    #  @raises EdgeError 帧解码失败时抛出，code=CAPTURE
+    def cropFrame(self, stitcher: FrameStitcher) -> FrameImage:
+        imageLibrary, arrayLibrary = stitcher.loadImageLibraries()
+        image = stitcher.decodeImage(imageLibrary, arrayLibrary, self._frames[0])
+        if self._cropRect is None:
+            return self._frames[0]
+        height, width = image.shape[:2]
+        x1, y1, x2, y2 = self._cropRect
+        piece = image[
+            int(y1 * height):int(y2 * height),
+            int(x1 * width):int(x2 * width),
+        ]
+        return stitcher.encodeImage(imageLibrary, piece)
+
     ## @brief 调试存图：本 worker 目录非空时写全景字节，并按占用阈值滚动删旧；失败只记日志不挡识别
     #  @param panorama 拼接后的全景图像字节
     #  @return 无
@@ -198,7 +255,7 @@ class RecognitionWorker(BaseThread):
             return
         try:
             stamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
-            target = Path(saveDir) / f"w{self._workerId}_panorama_{stamp}.png"
+            target = Path(saveDir) / f"w{self._workerId}_{self._imageTag}_{stamp}.png"
             target.write_bytes(panorama)
             self.rollPanoramaStorage(target)
         except Exception as error:
@@ -213,7 +270,7 @@ class RecognitionWorker(BaseThread):
         if self._usageRatio() <= self._rollThreshold:
             return
         candidates: list[tuple[float, str, Path]] = []
-        for path in Path(self._saveDir).glob(PANORAMA_GLOB_PATTERN):
+        for path in Path(self._saveDir).glob(f"*_{self._imageTag}_*.png"):
             if path == protected:
                 continue
             try:

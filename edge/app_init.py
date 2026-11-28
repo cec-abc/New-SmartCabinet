@@ -47,6 +47,12 @@ from edge.interfaces.i_recognition_engine import DetectionItem, IRecognitionEngi
 from edge.interfaces.i_sinks import DecodedSignal, ICaptureSink
 from edge.interfaces.i_socket import ISocket
 from edge.modules.recognition.recognition_controller import RecognitionController
+from edge.modules.recognition.recognition_modes import (
+    DEDUP_STRATEGIES,
+    DEFAULT_DEDUP_STRATEGY,
+    DEFAULT_RECOGNITION_MODE,
+    RECOGNITION_MODES,
+)
 from edge.modules.recognition.recognition_stitcher import (
     FrameStitcher,
     buildFrameStitcher,
@@ -151,6 +157,12 @@ CAMERA_INDICES_KEY: str = "camera_indices"
 MIN_WORKER_ID: int = 1
 ## @brief 双摄一组的相机台数
 DUAL_CAMERA_PAIR_SIZE: int = 2
+## @brief 识别模式配置项名称：stitch=拼接全景推理；crop=每路按比例裁剪独立识别
+RECOGNITION_MODE_KEY: str = "recognition_mode"
+## @brief 每路裁剪矩形配置键前缀；完整键名 crop_cam1~crop_cam8 对应 CAM1~CAM8
+CROP_RECT_KEY_PREFIX: str = "crop_cam"
+## @brief 汇总去重策略配置项名称
+DEDUP_STRATEGY_KEY: str = "dedup_strategy"
 
 ## @brief 识别查表配置：识别改走 ROI 对照表文件，装配时固定传空字典
 EMPTY_ROI_CONFIG: RoiConfig = {}
@@ -356,6 +368,12 @@ class AssemblyParts:
     confidenceThreshold: float = DEFAULT_CONFIDENCE
     ## @brief 缺框检测项是否拒识；生产装配为真，测试构造默认假
     requireBox: bool = False
+    ## @brief 识别模式：stitch=拼接全景推理；crop=每路裁剪独立识别
+    recognitionMode: str = DEFAULT_RECOGNITION_MODE
+    ## @brief 每路裁剪矩形，键=路号（1~8），值=归一化 (x1,y1,x2,y2)；缺路=全图不裁
+    cropRects: dict[int, tuple[float, float, float, float]] | None = None
+    ## @brief 汇总去重策略：first=保留首条；best_confidence=同货位取高置信度
+    dedupStrategy: str = DEFAULT_DEDUP_STRATEGY
     ## @brief 出网单帧安全阈值字节数；为空时按单帧上限派生
     safeFrameLimitBytes: int | None = None
 
@@ -663,6 +681,7 @@ def buildSystem(parts: AssemblyParts) -> EdgeControl:
         expectedWorkerCount=len(parts.cameraPairs),
         degradedItemsProvider=buildDegradedItemsProvider(parts.roiBindingRows or []),
         aggregationTimeoutSec=parts.aggregationTimeoutSec,
+        dedupStrategy=parts.dedupStrategy,
     )
     usb = buildUsbController(parts, control, control)
     recognition = RecognitionController(
@@ -677,6 +696,7 @@ def buildSystem(parts: AssemblyParts) -> EdgeControl:
         confidenceThreshold=parts.confidenceThreshold,
         rollThreshold=parts.rollThreshold, usageRatio=parts.usageRatio,
         requireBox=parts.requireBox,
+        recognitionMode=parts.recognitionMode, cropRects=parts.cropRects,
     )
     tcp = TcpControlLayer(
         parts.socket, parts.logger, parts.backoffSeq, parts.maxFrameSize,
@@ -708,8 +728,8 @@ def buildSystem(parts: AssemblyParts) -> EdgeControl:
     return control
 
 
-## @brief 推理执行线程池最大并发数；按采集 worker 数量级设定，避免慢推理无限堆积
-INFERENCE_POOL_MAX_WORKERS: int = 4
+## @brief 推理执行线程池最大并发数；与 8 路单摄 worker 对齐，避免慢推理无限堆积
+INFERENCE_POOL_MAX_WORKERS: int = 8
 ## @brief 推理执行线程池；模块级复用，超时后后台推理继续跑完但不再占用调用方
 _INFERENCE_POOL: ThreadPoolExecutor | None = None
 ## @brief 线程池访问锁，保证首次调用时只建一个池
@@ -1291,6 +1311,12 @@ class RecognitionInputs:
     nmsIouThreshold: float
     ## @brief 置信度门槛单一来源值，装配期读配置
     confidenceThreshold: float = DEFAULT_CONFIDENCE
+    ## @brief 识别模式：stitch=拼接全景推理；crop=每路裁剪独立识别
+    recognitionMode: str = DEFAULT_RECOGNITION_MODE
+    ## @brief 每路裁剪矩形，键=路号（1~8），值=归一化 (x1,y1,x2,y2)；缺路=全图不裁
+    cropRects: dict[int, tuple[float, float, float, float]] | None = None
+    ## @brief 汇总去重策略：first=保留首条；best_confidence=同货位取高置信度
+    dedupStrategy: str = DEFAULT_DEDUP_STRATEGY
 
 
 ## @brief 读采集布局：目录、相机索引、采集模式与帧来源，判定最终模式并把目录补足到线程数
@@ -1374,6 +1400,41 @@ def buildInfrastructure(config: IConfig, layout: CaptureLayout) -> Infrastructur
 #  @param infra 运行基础设施
 #  @return 识别侧装配输入
 #  @raises EdgeError 对照表按生产要求装载失败或编号超限时抛出，code=CONFIG
+## @brief 解析每路裁剪矩形配置：键 crop_cam1~crop_cam8，值 x1,y1,x2,y2 归一化 0~1
+#  @param config 配置读取门面（注入）
+#  @return 路号到归一化矩形的映射；未配置的路不在返回值内，等价全图不裁
+#  @raises EdgeError 取值非数值、越界或矩形畸形时抛出，code=CONFIG
+#  @note 配置管理器把逗号值推断成 list，这里同时兼容 list 与纯文本两种形态
+def parseCropRects(config: IConfig) -> dict[int, tuple[float, float, float, float]]:
+    rects: dict[int, tuple[float, float, float, float]] = {}
+    for cameraId in range(1, MAX_CAMERA_INDEX_COUNT + 1):
+        raw = config.get("recognition", f"{CROP_RECT_KEY_PREFIX}{cameraId}", default="")
+        parts = raw if isinstance(raw, list) else str(raw).split(",")
+        parts = [str(item).strip() for item in parts]
+        if not any(parts):
+            continue
+        if len(parts) != 4:
+            raise EdgeError(
+                ErrorCode.CONFIG,
+                f"裁剪矩形需要 4 个归一化值: {CROP_RECT_KEY_PREFIX}{cameraId}={parts}",
+            )
+        try:
+            values = [float(item) for item in parts]
+        except ValueError as error:
+            raise EdgeError(
+                ErrorCode.CONFIG,
+                f"裁剪矩形含非数值: {CROP_RECT_KEY_PREFIX}{cameraId}={parts}",
+            ) from error
+        x1, y1, x2, y2 = values
+        if not all(0.0 <= value <= 1.0 for value in values) or x1 >= x2 or y1 >= y2:
+            raise EdgeError(
+                ErrorCode.CONFIG,
+                f"裁剪矩形越界或畸形: {CROP_RECT_KEY_PREFIX}{cameraId}={parts}",
+            )
+        rects[cameraId] = (x1, y1, x2, y2)
+    return rects
+
+
 def buildRecognitionInputs(config: IConfig, layout: CaptureLayout,
                            infra: Infrastructure) -> RecognitionInputs:
     cameraDevices = buildCameraDevices(
@@ -1414,6 +1475,17 @@ def buildRecognitionInputs(config: IConfig, layout: CaptureLayout,
     nmsIouThreshold = readFloat(
         config, "recognition", "nms_iou_threshold", default=DEFAULT_NMS_IOU_THRESHOLD,
     )
+    recognitionMode = str(config.get(
+        "recognition", RECOGNITION_MODE_KEY, default=DEFAULT_RECOGNITION_MODE,
+    ))
+    if recognitionMode not in RECOGNITION_MODES:
+        raise EdgeError(ErrorCode.CONFIG, f"识别模式非法: {recognitionMode}")
+    cropRects = parseCropRects(config)
+    dedupStrategy = str(config.get(
+        "recognition", DEDUP_STRATEGY_KEY, default=DEFAULT_DEDUP_STRATEGY,
+    ))
+    if dedupStrategy not in DEDUP_STRATEGIES:
+        raise EdgeError(ErrorCode.CONFIG, f"去重策略非法: {dedupStrategy}")
     return RecognitionInputs(
         cameraDevices=cameraDevices,
         cameraPairs=cameraPairs,
@@ -1427,6 +1499,9 @@ def buildRecognitionInputs(config: IConfig, layout: CaptureLayout,
         inferenceBackend=inferenceBackend,
         nmsIouThreshold=nmsIouThreshold,
         confidenceThreshold=confidenceThreshold,
+        recognitionMode=recognitionMode,
+        cropRects=cropRects,
+        dedupStrategy=dedupStrategy,
     )
 
 
@@ -1459,6 +1534,9 @@ def assembleParts(config: IConfig, layout: CaptureLayout,
         usageRatio=diskUsageRatio(layout.captureDirs + layout.recognitionDirs),
         clock=defaultStamp,
         confidenceThreshold=inputs.confidenceThreshold,
+        recognitionMode=inputs.recognitionMode,
+        cropRects=inputs.cropRects,
+        dedupStrategy=inputs.dedupStrategy,
         ## 生产口径：检测结果须带位置框，缺框按未识别
         requireBox=True,
         backoffSeq=normalizeBackoffSeq(config.get("tcp", "backoff_seq")),

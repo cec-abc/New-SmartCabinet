@@ -8,6 +8,8 @@ from threading import Event
 from time import monotonic
 from typing import cast
 
+import pytest
+
 from edge.app_init import (
     CaptureTrigger,
     RecognitionCapability,
@@ -29,6 +31,7 @@ from edge.control.edge_dispatch_thread import EdgeDispatchThread
 from edge.interfaces.i_sinks import AckFrame
 from edge.modules.tcp.tcp_comm import TcpComm
 from edge.modules.tcp.tcp_control_layer import LINK_UP, TcpControlLayer
+from edge.tests.factory_gate import SKIP_REASON, factoryConfigActive
 from edge.tests.fakes.fake_logger import FakeLogger
 from edge.tests.integration.fake_host import FakeHost, HostFrame
 from edge.tests.integration.tcp_client_socket import TcpClientSocket
@@ -301,6 +304,9 @@ def testPeriodicFrameFormatAndCameraStatus() -> None:
 
 
 ## @brief 对应验收项 5：正式配置文件键齐全，周期 3 秒、8 路相机、4 组采集与识别目录
+@pytest.mark.skipif(
+    not factoryConfigActive(CONFIG_PATH), reason=SKIP_REASON,
+)
 def testProductionConfigHasRequiredKeys() -> None:
     from edge.infra.config_manager import IniConfigManager
 

@@ -78,7 +78,20 @@ def test_a1_inference_returns_fast_task() -> None:
 def test_a1_inference_gate_waits_when_full() -> None:
     import time
 
-    from edge.app_init import INFERENCE_POOL_MAX_WORKERS
+    from edge.app_init import INFERENCE_POOL_MAX_WORKERS, inferencePool
+
+    ## 排空闸门：模块级池跨用例共享，前序用例的后台推理可能仍占用名额；
+    ## 反复非阻塞取满再全部归还，闸门恢复满额后本用例才有确定的起步状态
+    _, gate = inferencePool()
+    for _ in range(60):
+        acquired = 0
+        while gate.acquire(blocking=False):
+            acquired += 1
+        for _ in range(acquired):
+            gate.release()
+        if acquired == INFERENCE_POOL_MAX_WORKERS:
+            break
+        time.sleep(0.05)
 
     ## @brief 慢于超时的推理：调用方超时返回后后台仍占闸门名额
     #  @return 检测结果列表

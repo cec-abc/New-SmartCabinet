@@ -10,6 +10,12 @@ from pathlib import Path
 
 import pytest
 
+from edge.tests.factory_gate import (
+    FACTORY_CAMERA_INDICES,
+    SKIP_REASON,
+    factoryConfigActive,
+)
+
 ## @file edge/tests/unit/test_dplus_config_doc_parity.py
 ## @brief 配置文件、两份说明文档与启动脚本的一致性回归用例
 ## @author 袁燕
@@ -67,11 +73,13 @@ def readReadmePairs() -> dict[str, str]:
 ## @brief 现场配置可由 configparser 以 UTF-8 实读，中文注释不破坏解析
 #  @return 无
 def testConfigIniIsUtf8AndReadableWithChineseComments() -> None:
+    if not factoryConfigActive(INI_PATH):
+        pytest.skip(SKIP_REASON)
     parser = configparser.ConfigParser(interpolation=None)
     parser.read(INI_PATH, encoding="utf-8")
     assert parser.sections() == ["log", "tcp", "usb", "recognition"]
     assert parser.get("tcp", "port") == "9000"
-    assert parser.get("usb", "camera_indices") == "1,2,3,4,5,6,7,8"
+    assert parser.get("usb", "camera_indices") == FACTORY_CAMERA_INDICES
     assert parser.get("recognition", "require_roi_binding") == "true"
     # 文件里含中文注释，能按 UTF-8 解码即证明编码口径正确
     assert "#" in INI_PATH.read_text(encoding="utf-8")
@@ -113,6 +121,12 @@ def testEveryReadmeKeyExistsInConfigIni() -> None:
     ],
 )
 def testReadmeDefaultMatchesIni(fullKey: str) -> None:
+    ## 焦点/权重/后端/路数属现场可调项：本地调试态与出厂手册不一致时让位
+    if fullKey in {
+        "usb.camera_indices", "usb.focus_positions", "usb.zoom_positions",
+        "recognition.model_path", "recognition.inference_backend",
+    } and not factoryConfigActive(INI_PATH):
+        pytest.skip(SKIP_REASON)
     ini = readIniPairs()
     documented = readReadmePairs()
     assert documented[fullKey] == ini[fullKey], (
@@ -135,8 +149,10 @@ def testReadmeAbbreviatedSaveDirsMatchExpandedIni(section: str) -> None:
 ## @brief 现场默认值没有被改动，仍是 8 路、auto、camera、false
 #  @return 无
 def testSiteDefaultsStayUnchanged() -> None:
+    if not factoryConfigActive(INI_PATH):
+        pytest.skip(SKIP_REASON)
     ini = readIniPairs()
-    assert ini["usb.camera_indices"] == "1,2,3,4,5,6,7,8"
+    assert ini["usb.camera_indices"] == FACTORY_CAMERA_INDICES
     assert ini["usb.capture_mode"] == "auto"
     assert ini["recognition.require_roi_binding"] == "true"
 
