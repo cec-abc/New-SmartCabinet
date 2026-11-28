@@ -103,7 +103,7 @@ def test_c4_1_four_workers_fork_and_return_immediately(tmp_path: Path) -> None:
     assert controller.getWorkers() == []
 
     started = time.monotonic()
-    controller.startCapture()
+    controller.startCapture("req-c4-001")
     elapsed = time.monotonic() - started
 
     ## 4 个 worker 都卡在屏障上（第 5 个参与者未到），证明并发拉起且主线程未被阻塞
@@ -116,7 +116,7 @@ def test_c4_1_four_workers_fork_and_return_immediately(tmp_path: Path) -> None:
 
     ## 前置校验：已在采集中，重复拉起抛 CONFIG
     try:
-        controller.startCapture()
+        controller.startCapture("req-c4-001")
         raise AssertionError("重复 startCapture 应抛 EdgeError(CONFIG)")
     except EdgeError as error:
         assert error.code == ErrorCode.CONFIG
@@ -136,7 +136,7 @@ def test_c4_1_guard_before_init(tmp_path: Path) -> None:
     ]
     controller = makeController(pairs, [tmp_path], FakeCaptureSink())
     try:
-        controller.startCapture()
+        controller.startCapture("req-c4-001")
         raise AssertionError("未 init 应抛 EdgeError(CONFIG)")
     except EdgeError as error:
         assert error.code == ErrorCode.CONFIG
@@ -163,7 +163,7 @@ def test_c4_2_dual_frames_saved(tmp_path: Path) -> None:
     sink = FakeCaptureSink()
     controller = makeController([(left, right)], [tmp_path], sink)
     controller.init()
-    controller.startCapture()
+    controller.startCapture("req-c4-001")
     controller.stopCapture()
 
     leftFile = tmp_path / "w1_left_stamp.jpg"
@@ -200,7 +200,7 @@ def test_c4_2_linux_skeleton_converted_before_boundary(tmp_path: Path) -> None:
     sink = FakeCaptureSink()
     controller = makeController([(linuxDevice, FakeCameraDevice(b"R"))], [tmp_path], sink)
     controller.init()
-    controller.startCapture()
+    controller.startCapture("req-c4-001")
     ## 等待首帧回调凑齐后再停机，避免焦点屏障引入的线程竞态导致假失败
     deadline = time.monotonic() + 3.0
     while time.monotonic() < deadline and not sink.successEvents and not sink.errorEvents:
@@ -228,7 +228,7 @@ def test_c4_3_roll_deletes_oldest(tmp_path: Path) -> None:
         [tmp_path], sink, usageRatio=currentRatio,
     )
     controller.init()
-    controller.startCapture()
+    controller.startCapture("req-c4-001")
     controller.stopCapture()
 
     ## 初始 5 个文件（3 旧 + 2 新）→ 删 2 个最旧后剩 3 个，比例 0.3 停止
@@ -256,7 +256,7 @@ def test_c4_3_roll_still_over_threshold_logs_error(tmp_path: Path) -> None:
         [tmp_path], sink, logger=logger, usageRatio=saturatedDisk,
     )
     controller.init()
-    controller.startCapture()
+    controller.startCapture("req-c4-001")
     controller.stopCapture()
 
     ## 旧文件删尽后比例仍超阈值：本轮新帧受保护、记 error、成功回调不受影响
@@ -290,7 +290,7 @@ def test_c4_4_success_error_callbacks_isolated(tmp_path: Path) -> None:
     assert hasattr(sink, "onCaptureSuccess")
 
     controller.init()
-    controller.startCapture()
+    controller.startCapture("req-c4-001")
     ## 焦点屏障要求全部 worker 就绪后才放行首帧；等待回调凑齐再停机，避免测试自身竞态
     deadline = time.monotonic() + 3.0
     while time.monotonic() < deadline:

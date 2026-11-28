@@ -137,7 +137,7 @@ def testFocusGateBlocksFirstFrameUntilApplied(monkeypatch: pytest.MonkeyPatch) -
     monkeypatch.setattr(camera, "readFrame", countingReadFrame)
     worker = CaptureWorker(
         1, (camera,), "", None, _ignoreSuccess, _ignoreError,
-        1.0, lambda: 0.0, lambda: "stamp", focusGate=focusGate,
+        1.0, lambda: 0.0, lambda: "stamp", "req-focus-guard", focusGate=focusGate,
     )
     worker.start()
     try:

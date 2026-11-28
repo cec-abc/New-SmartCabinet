@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from pathlib import Path
+from threading import Event
 from time import monotonic
 
 from edge.base.base_thread import BaseThread
@@ -39,6 +40,8 @@ RIGHT_FRAME_LABEL: str = "right"
 FRAME_FILE_EXTENSION: str = ".jpg"
 ## @brief 滚动删旧时扫描的文件名模式
 FRAME_GLOB_PATTERN: str = "*.jpg"
+## @brief 请求驱动模式下，一轮取帧失败后的重试次数；仍失败回睡等待超时降级兜底
+EMPTY_FRAME_RETRY_COUNT: int = 3
 
 ## @brief 相机就绪回调；参数为线程编号
 DevicesReadyCallback = Callable[[int], None]
@@ -126,6 +129,8 @@ class CaptureWorker(BaseThread):
         self._nowSec: Callable[[], float] = nowSec if nowSec is not None else monotonic
         ## @brief 各路上次尝试重开的时间戳，下标 = 相机在本组中的序号
         self._lastReopenAt: list[float] = [0.0] * len(cameras)
+        ## @brief 请求驱动唤醒事件；新请求到达时置位，worker 从睡眠中被唤醒抓一轮
+        self._wakeEvent: Event = Event()
 
     ## @brief 线程主流程：开本组相机、等定焦完成、等镜头稳定、循环取帧、关本组相机
     #  @return 无
@@ -261,11 +266,13 @@ class CaptureWorker(BaseThread):
         self.emptyFrameCount = 0
         return tuple(frames)
 
-    ## @brief 切换本线程服务的请求标识；上位机换一轮扫描时由采集门面下发
+    ## @brief 切换本线程服务的请求标识并唤醒睡眠线程；上位机换一轮扫描时由采集门面下发
     #  @param requestId 上位机请求标识
     #  @return 无
+    #  @note 请求驱动口径：赋值后置位唤醒事件，睡眠中的线程立刻醒来抓一轮
     def setRequestId(self, requestId: str) -> None:
         self._requestId = requestId
+        self._wakeEvent.set()
 
     ## @brief 本轮帧落盘：单摄只写一张，双摄左右各写一张（文件名保持不变）
     #  @param frames 本轮帧元组，单摄 1 帧、双摄左前右后 2 帧
@@ -349,23 +356,51 @@ class CaptureWorker(BaseThread):
         self._logError(error)
         self._onError(self._workerId, error)
 
-    ## @brief 采集主循环：每轮取帧并分发，按间隔等待下一轮
+    ## @brief 采集主循环：请求驱动口径——无在途请求时睡眠等待唤醒，有请求时抓一轮推一次后回睡
     #  @return 无
+    #  @note 每个请求每线程恰好抓一轮、发一次帧回调：相机保持常开（状态与周期帧口径不变），
+    #        空闲期零抓帧零落盘零推理；一轮失败有限重试后回睡，由聚合超时降级兜底
     def _captureStream(self) -> None:
         while not self.stopEvent.is_set():
+            if not self._requestId:
+                ## 无在途请求：睡等新请求唤醒或停机；醒后回到循环头重新判定
+                if not self._waitForWake():
+                    return
+                continue
+            processingId = self._requestId
+            frames = self._grabWithRetry()
+            if frames is not None:
+                self._publishFrames(frames, processingId)
+            ## 本轮已归属该请求：清空标识进入休眠，杜绝同一请求被重复触发推理
+            self._requestId = ""
+
+    ## @brief 睡眠等待新请求唤醒或停机；超时醒来只查停机，不抓帧
+    #  @return 继续运行返回 True；停机返回 False
+    def _waitForWake(self) -> bool:
+        self._wakeEvent.wait(self._captureIntervalSec)
+        if self._wakeEvent.is_set():
+            self._wakeEvent.clear()
+        return not self.stopEvent.is_set()
+
+    ## @brief 带有限重试的抓一轮：任一路为空按间隔重试，超过次数返回 None 放弃本轮
+    #  @return 本轮帧元组；重试耗尽仍取不齐返回 None，该请求由聚合超时降级兜底
+    def _grabWithRetry(self) -> tuple[bytes, ...] | None:
+        for _attempt in range(EMPTY_FRAME_RETRY_COUNT):
             self.retryClosedCameras()
             frames = self.captureOnce()
             if frames is not None:
-                self._publishFrames(frames)
+                return frames
             if not self.interruptibleWait(self._captureIntervalSec):
-                return
+                return None
+        return None
 
     ## @brief 一轮帧的分发：帧回调在前，落盘与滚动删旧在后，成功回调只报一次
     #  @param frames 本轮帧元组
+    #  @param requestId 本轮归属的上位机请求标识
     #  @return 无
-    def _publishFrames(self, frames: tuple[bytes, ...]) -> None:
+    def _publishFrames(self, frames: tuple[bytes, ...], requestId: str) -> None:
         if self._frameSink is not None:
-            self._frameSink.onFrameCaptured(self._workerId, frames, self._requestId)
+            self._frameSink.onFrameCaptured(self._workerId, frames, requestId)
         if self._saveEnabled:
             ## 循环流式采集每轮换一批文件，保护集合只留本轮，避免集合无限增长
             self._currentFiles.clear()
