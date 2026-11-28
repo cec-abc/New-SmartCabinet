@@ -121,11 +121,12 @@ def testEveryReadmeKeyExistsInConfigIni() -> None:
     ],
 )
 def testReadmeDefaultMatchesIni(fullKey: str) -> None:
-    ## 焦点/权重/后端/路数/采集模式属现场可调项：本地调试态与出厂手册不一致时让位
+    ## 焦点/权重/后端/路数/采集模式/检测门槛属现场可调项：本地调试态与出厂手册不一致时让位
     if fullKey in {
         "usb.camera_indices", "usb.capture_mode",
         "usb.focus_positions", "usb.zoom_positions",
         "recognition.model_path", "recognition.inference_backend",
+        "recognition.min_confidence",
     } and not factoryConfigActive(INI_PATH):
         pytest.skip(SKIP_REASON)
     ini = readIniPairs()
