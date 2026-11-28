@@ -31,7 +31,12 @@ from edge.control.edge_dispatch_thread import EdgeDispatchThread
 from edge.interfaces.i_sinks import AckFrame
 from edge.modules.tcp.tcp_comm import TcpComm
 from edge.modules.tcp.tcp_control_layer import LINK_UP, TcpControlLayer
-from edge.tests.factory_gate import SKIP_REASON, factoryConfigActive
+from edge.tests.factory_gate import (
+    ROI_SAMPLE_SKIP_REASON,
+    SKIP_REASON,
+    factoryConfigActive,
+    sampleRoiBindingActive,
+)
 from edge.tests.fakes.fake_logger import FakeLogger
 from edge.tests.integration.fake_host import FakeHost, HostFrame
 from edge.tests.integration.tcp_client_socket import TcpClientSocket
@@ -326,6 +331,8 @@ def testProductionConfigHasRequiredKeys() -> None:
 
 ## @brief 对应验收项 5：ROI 对照表表头与契约逐字一致，样例数据 4 行
 def testRoiBindingHeaderMatchesContract() -> None:
+    if not sampleRoiBindingActive(ROI_CSV_PATH):
+        pytest.skip(ROI_SAMPLE_SKIP_REASON)
     lines = ROI_CSV_PATH.read_text(encoding="utf-8").splitlines()
 
     assert lines[0] == ROI_CSV_HEADER

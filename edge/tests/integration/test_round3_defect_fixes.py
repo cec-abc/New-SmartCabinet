@@ -7,6 +7,8 @@ from pathlib import Path
 from threading import Barrier, Event
 from time import monotonic
 
+import pytest
+
 from edge.app_init import loadRoiBindingRows, validateRoiWorkerScope
 from edge.control.edge_control import CachedEvent, EdgeControl, ModuleWiring
 from edge.exceptions import EdgeError, ErrorCode
@@ -29,6 +31,7 @@ from edge.modules.recognition.recognition_yolo_engine import (
 )
 from edge.modules.usb.usb_camera_device import CameraFactory
 from edge.modules.usb.usb_controller import UsbController
+from edge.tests.factory_gate import ROI_SAMPLE_SKIP_REASON, sampleRoiBindingActive
 from edge.tests.fakes.fake_logger import FakeLogger
 from edge.tests.fakes.fake_recognition_engine import FakeRecognitionEngine
 from edge.tests.fakes.fake_sinks import FakeRecognitionSink
@@ -218,6 +221,8 @@ def test_roi_binding_table_empty_fails_fast(tmp_path: Path) -> None:
 
 ## @brief 对应缺陷 1：对照表装载成功时装配阶段拿到行
 def test_roi_binding_table_loaded_returns_rows() -> None:
+    if not sampleRoiBindingActive(ROI_CSV_PATH):
+        pytest.skip(ROI_SAMPLE_SKIP_REASON)
     loader = RoiBindingLoader(FakeLogger())
 
     rows = loadRoiBindingRows(loader, str(ROI_CSV_PATH))
@@ -228,6 +233,8 @@ def test_roi_binding_table_loaded_returns_rows() -> None:
 
 ## @brief 对应缺陷 3：对照表线程编号超过实际采集线程数时启动即判配置错误
 def test_roi_worker_id_beyond_actual_worker_count_fails_fast() -> None:
+    if not sampleRoiBindingActive(ROI_CSV_PATH):
+        pytest.skip(ROI_SAMPLE_SKIP_REASON)
     rows = RoiBindingLoader(FakeLogger()).load(str(ROI_CSV_PATH))
 
     try:

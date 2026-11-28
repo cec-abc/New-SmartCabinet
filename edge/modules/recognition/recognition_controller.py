@@ -75,6 +75,7 @@ class RecognitionController(BaseService):
                  requireBox: bool = False,
                  recognitionMode: str = RECOGNITION_MODE_STITCH,
                  cropRects: dict[int, tuple[float, float, float, float]] | None = None,
+                 drawRoiOverlay: bool = False,
                  ) -> None:
         ## @brief 推理引擎
         self._engine: IRecognitionEngine = engine
@@ -134,6 +135,8 @@ class RecognitionController(BaseService):
         self._cropRects: dict[int, tuple[float, float, float, float]] = (
             cropRects if cropRects is not None else {}
         )
+        ## @brief 调试存图是否叠加绘制 ROI 矩形框与货位标识
+        self._drawRoiOverlay: bool = drawRoiOverlay
 
     ## @brief 初始化：校验配置并仅加载一次模型，Fail-Fast 不引入能力降级
     #  @return 无
@@ -279,6 +282,7 @@ class RecognitionController(BaseService):
             requireBox=self._requireBox,
             recognitionMode=self._recognitionMode,
             cropRect=self._cropRects.get(workerId),
+            drawRoiOverlay=self._drawRoiOverlay,
         )
 
     ## @brief 统一的错误日志出口，异常码使用 code.name

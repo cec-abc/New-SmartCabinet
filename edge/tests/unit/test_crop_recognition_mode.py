@@ -65,7 +65,8 @@ class FakeEngine:
         pass
 
 
-def makeWorker(cropRect: tuple[float, float, float, float] | None) -> RecognitionWorker:
+def makeWorker(cropRect: tuple[float, float, float, float] | None,
+               drawRoiOverlay: bool = False) -> RecognitionWorker:
     return RecognitionWorker(
         1, "req-crop-001", "", FakeEngine(), FakeLogger(),
         lambda *args: None, lambda *args: None,
@@ -75,6 +76,7 @@ def makeWorker(cropRect: tuple[float, float, float, float] | None) -> Recognitio
         frames=(makeFrameBytes(),),
         recognitionMode=RECOGNITION_MODE_CROP,
         cropRect=cropRect,
+        drawRoiOverlay=drawRoiOverlay,
     )
 
 
@@ -151,3 +153,22 @@ def testStitchModeStillInferenceOnceOnPanorama() -> None:
     assert items
     engine = worker._engine
     assert engine.receivedSizes == [(640, 480)]
+
+
+def testRoiOverlayDrawsRectAndKeepsSize() -> None:
+    """绘制开关开启：存图叠加 ROI 框与货位标识，尺寸不变、字节变化。"""
+    worker = makeWorker(None, drawRoiOverlay=True)
+    original = makeFrameBytes()
+    drawn = worker.renderRoiOverlayOnImage(original)
+    assert drawn != original
+    decoded = cv2.imdecode(
+        np.frombuffer(bytearray(drawn), dtype=np.uint8), cv2.IMREAD_COLOR,
+    )
+    assert decoded.shape[:2] == (480, 640)
+
+
+def testRoiOverlayOffReturnsOriginal() -> None:
+    """绘制开关关闭：存图字节原样返回，不多不少。"""
+    worker = makeWorker(None, drawRoiOverlay=False)
+    original = makeFrameBytes()
+    assert worker.renderRoiOverlayOnImage(original) == original

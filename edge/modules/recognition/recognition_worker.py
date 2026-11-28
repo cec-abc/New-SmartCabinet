@@ -43,6 +43,12 @@ MODULE_NAME = "RecognitionWorker"
 DEFAULT_PANORAMA_ROLL_THRESHOLD: float = 0.3
 ## @brief 全景图滚动删旧扫描的文件名模式
 PANORAMA_GLOB_PATTERN: str = "*_panorama_*.png"
+## @brief ROI 叠加绘制的框线颜色（BGR 绿色），现场看图醒目
+ROI_OVERLAY_COLOR: tuple[int, int, int] = (0, 255, 0)
+## @brief ROI 叠加绘制的线宽与文字粗细
+ROI_OVERLAY_THICKNESS: int = 2
+## @brief ROI 标识文字字号；存图多为 640 级别，取小号避免遮挡画面
+ROI_OVERLAY_FONT_SCALE: float = 0.5
 ## @brief 结果回调类型
 ResultCallback = Callable[[int, AckFrame, str], None]
 ## @brief 失败回调类型
@@ -96,6 +102,7 @@ class RecognitionWorker(BaseThread):
                  requireBox: bool = False,
                  recognitionMode: str = DEFAULT_RECOGNITION_MODE,
                  cropRect: tuple[float, float, float, float] | None = None,
+                 drawRoiOverlay: bool = False,
                  ) -> None:
         super().__init__(name=f"RecognitionWorker-{workerId}", logger=logger)
         ## @brief 线程编号
@@ -152,6 +159,8 @@ class RecognitionWorker(BaseThread):
         self._imageTag: str = (
             "crop" if recognitionMode == RECOGNITION_MODE_CROP else "panorama"
         )
+        ## @brief 调试存图是否叠加绘制 ROI 矩形框与货位标识（draw_roi_overlay 开关）
+        self._drawRoiOverlay: bool = drawRoiOverlay
         ## @brief 本轮存图删旧计数，供验收举证与现场排查
         self.removedPanoramaCount: int = 0
 
@@ -254,13 +263,46 @@ class RecognitionWorker(BaseThread):
         if not saveDir:
             return
         try:
+            stamped = self.renderRoiOverlayOnImage(panorama)
             stamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
             target = Path(saveDir) / f"w{self._workerId}_{self._imageTag}_{stamp}.png"
-            target.write_bytes(panorama)
+            target.write_bytes(stamped)
             self.rollPanoramaStorage(target)
         except Exception as error:
             ## 调试存图失败不影响识别主流程：任何异常都只记日志，绝不向外抛
             self.logFailure(EdgeError(ErrorCode.CAPTURE, f"全景存图失败: {error}"))
+
+    ## @brief 在存图上叠加渲染本 worker 的 ROI 矩形框与货位标识；开关关闭或无条件时原样返回
+    #  @param panorama 原始存图字节
+    #  @return 渲染后的图像字节；开关关闭、无图像处理器或本 worker 无对照行时为原图
+    #  @note 渲染失败只记日志并回落原图，绝不影响识别主流程；标识含货位号与标志类别名
+    def renderRoiOverlayOnImage(self, panorama: FrameImage) -> FrameImage:
+        if not self._drawRoiOverlay or self._stitcher is None:
+            return panorama
+        rows = [
+            row for row in (self._roiBindingRows or [])
+            if row.workerId == self._workerId
+        ]
+        if not rows:
+            return panorama
+        try:
+            imageLibrary, arrayLibrary = self._stitcher.loadImageLibraries()
+            image = self._stitcher.decodeImage(imageLibrary, arrayLibrary, panorama)
+            for row in rows:
+                imageLibrary.rectangle(
+                    image, (row.rectX1, row.rectY1), (row.rectX2, row.rectY2),
+                    ROI_OVERLAY_COLOR, ROI_OVERLAY_THICKNESS,
+                )
+                imageLibrary.putText(
+                    image, f"{row.position} [{row.markerId}]",
+                    (row.rectX1 + 2, max(14, row.rectY1 - 6)),
+                    imageLibrary.FONT_HERSHEY_SIMPLEX, ROI_OVERLAY_FONT_SCALE,
+                    ROI_OVERLAY_COLOR, ROI_OVERLAY_THICKNESS,
+                )
+            return self._stitcher.encodeImage(imageLibrary, image)
+        except Exception as error:
+            self.logFailure(EdgeError(ErrorCode.CAPTURE, f"ROI 绘制失败: {error}"))
+            return panorama
 
     ## @brief 占用超阈值时按最旧顺序删全景图；删后仍超阈值记 error 但不中断识别
     #  @param protected 本轮刚写入的全景文件，删旧时跳过，避免误删本轮结果

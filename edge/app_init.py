@@ -163,6 +163,8 @@ RECOGNITION_MODE_KEY: str = "recognition_mode"
 CROP_RECT_KEY_PREFIX: str = "crop_cam"
 ## @brief 汇总去重策略配置项名称
 DEDUP_STRATEGY_KEY: str = "dedup_strategy"
+## @brief 调试存图叠加绘制 ROI 框的开关键；true=存图带矩形框与货位标识
+DRAW_ROI_OVERLAY_KEY: str = "draw_roi_overlay"
 
 ## @brief 识别查表配置：识别改走 ROI 对照表文件，装配时固定传空字典
 EMPTY_ROI_CONFIG: RoiConfig = {}
@@ -374,6 +376,8 @@ class AssemblyParts:
     cropRects: dict[int, tuple[float, float, float, float]] | None = None
     ## @brief 汇总去重策略：first=保留首条；best_confidence=同货位取高置信度
     dedupStrategy: str = DEFAULT_DEDUP_STRATEGY
+    ## @brief 调试存图叠加绘制 ROI 框与货位标识
+    drawRoiOverlay: bool = False
     ## @brief 出网单帧安全阈值字节数；为空时按单帧上限派生
     safeFrameLimitBytes: int | None = None
 
@@ -697,6 +701,7 @@ def buildSystem(parts: AssemblyParts) -> EdgeControl:
         rollThreshold=parts.rollThreshold, usageRatio=parts.usageRatio,
         requireBox=parts.requireBox,
         recognitionMode=parts.recognitionMode, cropRects=parts.cropRects,
+        drawRoiOverlay=parts.drawRoiOverlay,
     )
     tcp = TcpControlLayer(
         parts.socket, parts.logger, parts.backoffSeq, parts.maxFrameSize,
@@ -1317,6 +1322,8 @@ class RecognitionInputs:
     cropRects: dict[int, tuple[float, float, float, float]] | None = None
     ## @brief 汇总去重策略：first=保留首条；best_confidence=同货位取高置信度
     dedupStrategy: str = DEFAULT_DEDUP_STRATEGY
+    ## @brief 调试存图叠加绘制 ROI 框与货位标识
+    drawRoiOverlay: bool = False
 
 
 ## @brief 读采集布局：目录、相机索引、采集模式与帧来源，判定最终模式并把目录补足到线程数
@@ -1486,6 +1493,9 @@ def buildRecognitionInputs(config: IConfig, layout: CaptureLayout,
     ))
     if dedupStrategy not in DEDUP_STRATEGIES:
         raise EdgeError(ErrorCode.CONFIG, f"去重策略非法: {dedupStrategy}")
+    drawRoiOverlay = flagEnabled(
+        config.get("recognition", DRAW_ROI_OVERLAY_KEY, default=False),
+    )
     return RecognitionInputs(
         cameraDevices=cameraDevices,
         cameraPairs=cameraPairs,
@@ -1502,6 +1512,7 @@ def buildRecognitionInputs(config: IConfig, layout: CaptureLayout,
         recognitionMode=recognitionMode,
         cropRects=cropRects,
         dedupStrategy=dedupStrategy,
+        drawRoiOverlay=drawRoiOverlay,
     )
 
 
@@ -1537,6 +1548,7 @@ def assembleParts(config: IConfig, layout: CaptureLayout,
         recognitionMode=inputs.recognitionMode,
         cropRects=inputs.cropRects,
         dedupStrategy=inputs.dedupStrategy,
+        drawRoiOverlay=inputs.drawRoiOverlay,
         ## 生产口径：检测结果须带位置框，缺框按未识别
         requireBox=True,
         backoffSeq=normalizeBackoffSeq(config.get("tcp", "backoff_seq")),

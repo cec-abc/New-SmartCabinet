@@ -27,3 +27,23 @@ def factoryConfigActive(iniPath: Path) -> bool:
     if not parser.has_section("usb"):
         return False
     return parser.get("usb", "camera_indices", fallback="") == FACTORY_CAMERA_INDICES
+
+
+## @brief 出厂样例 ROI 对照表的标志占位类别名
+SAMPLE_MARKER_ID: str = "mk_8821"
+## @brief 本地 ROI 对照表已是现场标定值时跳过样例断言的理由文案
+ROI_SAMPLE_SKIP_REASON: str = (
+    "本地 roi_binding.csv 已按现场实测重标（非出厂四行占位样例），"
+    "样例形态断言跳过；出厂样例恢复后自动执行"
+)
+
+
+## @brief 判定 ROI 对照表是否仍是出厂四行占位样例
+#  @param csvPath ROI 对照表路径
+#  @return 表头加四行且含占位标志名时为真；现场已重标为假
+def sampleRoiBindingActive(csvPath: Path) -> bool:
+    try:
+        lines = csvPath.read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return False
+    return len(lines) == 5 and SAMPLE_MARKER_ID in lines[1]

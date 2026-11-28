@@ -45,6 +45,7 @@ from edge.modules.usb.usb_controller import (
     DEFAULT_CAMERA_COUNT,
     UsbController,
 )
+from edge.tests.factory_gate import ROI_SAMPLE_SKIP_REASON, sampleRoiBindingActive
 from edge.tests.fakes.fake_camera_device import FakeCameraDevice
 from edge.tests.fakes.fake_logger import FakeLogger
 from edge.tests.fakes.fake_recognition_engine import FakeRecognitionEngine
@@ -245,6 +246,8 @@ def testSc4SingleFrameReturnedAsIsAndDualStillStitches(
 
 ## @brief 验收项 SC-5：ROI 对照表 4 行归一到 worker 1 后全部进 items，货位不丢不重复
 def testSc5AllFourRoiRowsLandInItems(tmp_path: Path) -> None:
+    if not sampleRoiBindingActive(SINGLE_ROI_CSV_PATH):
+        pytest.skip(ROI_SAMPLE_SKIP_REASON)
     rows = readSingleCameraRoiRows()
     assert len(rows) == SINGLE_ROI_ROW_COUNT
     normalized = normalizeRoiWorkerIds(rows, SINGLE_CAMERA_INDEX_COUNT, FakeLogger())

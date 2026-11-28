@@ -159,6 +159,7 @@ python -m edge.main
 | `crop_cam7` | `0.00,0.00,1.00,1.00` | CAM7 裁剪矩形，含义同上 |
 | `crop_cam8` | `0.00,0.00,1.00,1.00` | CAM8 裁剪矩形，含义同上 |
 | `dedup_strategy` | `best_confidence` | 汇总去重策略：`first`=重复货位保留首条（原口径）；`best_confidence`=同货位取置信度高者 |
+| `draw_roi_overlay` | `false` | 调试存图是否叠加绘制 ROI 矩形框与货位标识：`true`=存图上画绿框并标 `货位号 [标志类别]`；生产口径 `false` |
 
 ### 3.5 `require_roi_binding`：识别清单给不出来怎么办
 

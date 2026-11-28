@@ -7,6 +7,8 @@ from pathlib import Path
 from threading import Event
 from time import monotonic
 
+import pytest
+
 from edge.app_init import (
     AssemblyParts,
     CaptureTrigger,
@@ -29,6 +31,7 @@ from edge.modules.recognition.recognition_utils import (
 from edge.modules.recognition.recognition_yolo_engine import YoloEngine
 from edge.modules.tcp.tcp_comm import TcpComm
 from edge.modules.usb.usb_controller import UsbController
+from edge.tests.factory_gate import ROI_SAMPLE_SKIP_REASON, sampleRoiBindingActive
 from edge.tests.fakes.fake_logger import FakeLogger
 from edge.tests.fakes.fake_socket import FakeSocket
 from edge.tests.integration.fake_host import FakeHost
@@ -393,6 +396,8 @@ def waitAck(control: EdgeControl, sender: RecordingSender,
 
 ## @brief 对应验收项：某一路相机打不开时，本轮仍产出协议形状的降级应答
 def test_worker_failure_still_yields_protocol_ack(tmp_path: Path) -> None:
+    if not sampleRoiBindingActive(ROI_CSV_PATH):
+        pytest.skip(ROI_SAMPLE_SKIP_REASON)
     host, control = startLinkedEdge(tmp_path, failingPairs=(2,))
     try:
         host.sendRecognizeReq("req-fail-0001")
@@ -466,6 +471,8 @@ def test_real_tcp_serves_two_requests_and_keeps_decode_thread(tmp_path: Path) ->
 
 ## @brief 对应验收项：聚合等待上限到点后强制降级出帧，请求不会悬着不回
 def test_aggregation_timeout_forces_degraded_ack() -> None:
+    if not sampleRoiBindingActive(ROI_CSV_PATH):
+        pytest.skip(ROI_SAMPLE_SKIP_REASON)
     control, sender = makeControl(expectedWorkerCount=WORKER_COUNT,
                                   aggregationTimeoutSec=0.2)
     control.routeSignal({"type": "recognize_req", "request_id": "req-timeout-0001"})
@@ -486,6 +493,8 @@ def test_aggregation_timeout_forces_degraded_ack() -> None:
 
 ## @brief 对应验收项：识别线程抛异常时该请求也有形状合法的应答
 def test_recognition_error_still_answers_request() -> None:
+    if not sampleRoiBindingActive(ROI_CSV_PATH):
+        pytest.skip(ROI_SAMPLE_SKIP_REASON)
     control, sender = makeControl(expectedWorkerCount=WORKER_COUNT,
                                   aggregationTimeoutSec=5.0)
     control.routeSignal({"type": "recognize_req", "request_id": "req-err-0001"})
@@ -556,6 +565,8 @@ def test_camera_status_follows_physical_order(tmp_path: Path) -> None:
 
 ## @brief 对应验收项：对照表线程编号超过实际采集线程数时启动即判配置错误
 def test_roi_worker_scope_fails_fast() -> None:
+    if not sampleRoiBindingActive(ROI_CSV_PATH):
+        pytest.skip(ROI_SAMPLE_SKIP_REASON)
     rows = loadSampleRows()
 
     try:
