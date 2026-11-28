@@ -170,7 +170,7 @@ def main():
     parser = argparse.ArgumentParser(description="手动对焦 / 变焦测试")
     parser.add_argument(
         "--device",
-        default="1",
+        default="2",
         help="摄像头地址：Windows 写索引，Linux 写 /dev/videoN",
     )
     args = parser.parse_args()
@@ -187,8 +187,8 @@ def main():
         print(f"  {name}: {flag}{detail}")
     print("=======================")
 
-    ## 复用生产设备取真帧并下发对焦 / 变焦；frameReader 仅占位帧源用到，这里用 camera 源
-    device = CameraFactory.createDevice(deviceAddr, lambda: None, frameSource=FRAME_SOURCE_CAMERA)
+    ## 复用生产设备取真帧并下发对焦 / 变焦；camera 源必须传 None 才走真实抓帧
+    device = CameraFactory.createDevice(deviceAddr, None, frameSource=FRAME_SOURCE_CAMERA)
     try:
         device.open()
     except Exception as error:  # noqa: BLE001
@@ -199,9 +199,9 @@ def main():
     print("对焦粗调: ←/[ 减  →/] 增   对焦微调: ↑ 增  ↓ 减   a 自动  m 手动")
     print("变焦: , 减  . 增   r 回读   q 退出")
 
-    focusStep = (FOCUS_POSITION_MAX - FOCUS_POSITION_MIN) / 20.0
+    focusStep = 1   #(FOCUS_POSITION_MAX - FOCUS_POSITION_MIN) / 40.0
     fineStep = focusStep / 5.0
-    zoomStep = (ZOOM_POSITION_MAX - ZOOM_POSITION_MIN) / 20.0
+    zoomStep = 1   #(ZOOM_POSITION_MAX - ZOOM_POSITION_MIN) / 40.0
     focusManual = True
     focusOk = bool(probe["focus"]["supported"])
     zoomOk = bool(probe["zoom"]["supported"])

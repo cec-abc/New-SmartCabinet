@@ -1,0 +1,36 @@
+{
+  "leftImage": "D:/CFDZ/BYJSJ/New-SmartCabinet/edge/lab/outputs/layer_verify/left.jpg",
+  "rightImage": "D:/CFDZ/BYJSJ/New-SmartCabinet/edge/lab/outputs/layer_verify/right.jpg",
+  "outputDir": "D:/CFDZ/BYJSJ/New-SmartCabinet/edge/lab/outputs/stitch_tuning",
+  "outputName": "result_picktwo.png",
+  "mode": "picktwo",
+  "ratio": 0.5,
+  "leftY": 0,
+  "rightY": 0,
+  "overlap": 160,
+  "matchRatio": 0.7,
+  "ransacThreshold": 4.0,
+  "manualDx": 0,
+  "manualDy": 0,
+  "mirrorDx": -50,
+  "mirrorDy": -28,
+  "sweepRatios": [
+    0.3,
+    0.4,
+    0.5,
+    0.6,
+    0.7
+  ],
+  "leftRect": [
+    200,
+    190,
+    600,
+    340
+  ],
+  "rightRect": [
+    40,
+    90,
+    200,
+    220
+  ]
+}

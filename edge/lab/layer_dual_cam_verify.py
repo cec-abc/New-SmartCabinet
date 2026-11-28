@@ -179,10 +179,8 @@ def recordCheck(checkId: str, name: str, passed: bool,
 #  @return JPEG 帧字节
 #  @raises EdgeError 打开或取帧失败
 def grabRealFrame(address: str, logger: ILogger) -> bytes:
-    def noFrame() -> bytes:
-        return b""
     device = CameraFactory.createDevice(
-        address, noFrame, logger, None, None, FRAME_SOURCE_CAMERA,
+        address, None, logger, None, None, FRAME_SOURCE_CAMERA,
     )
     device.open()
     try:
@@ -293,8 +291,11 @@ def runOnce(args: argparse.Namespace, logger: ILogger,
 
     leftBytes, rightBytes = readFramePair(args, logger)
     mode = "fake" if args.fake_camera else "camera"
-    emit("C03", "双摄取帧", True,
+    frameBytesOk = bool(leftBytes) and bool(rightBytes)
+    emit("C03", "双摄取帧", frameBytesOk,
          f"mode={mode}, left={len(leftBytes)}B, right={len(rightBytes)}B")
+    if not frameBytesOk:
+        raise EdgeError(ErrorCode.CAPTURE, "取帧为空: 左路或右路返回 0 字节")
 
     stitcher = Cv2FrameStitcher(logger)
     panorama = stitcher.stitch((leftBytes, rightBytes))
